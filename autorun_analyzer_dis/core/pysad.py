@@ -7,8 +7,6 @@ import numpy as np
 import pandas as pd
 from .utils import shannon_entropy
 from .unsigned import unsigned_series
-from .rules import ZERO_WIDTH, RLO, NBSP, ADS, DEVICE_PREFIX
-
 
 def build_features_for_pysad(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -33,17 +31,12 @@ def build_features_for_pysad(df: pd.DataFrame) -> pd.DataFrame:
 
     # Generate numeric features
     feat = pd.DataFrame({
-        "len": combined.apply(len),
-        "args": combined.apply(lambda s: len([t for t in re.split(r'\s+', s.strip()) if t])),
-        "slashes": combined.str.count(r'[\\/]'),
-        "dots": combined.str.count(r'\.'),
-        "entropy": combined.apply(shannon_entropy),
-        "zwsp": combined.apply(lambda s: 1 if ZERO_WIDTH.search(s) else 0),
-        "rlo": combined.apply(lambda s: 1 if RLO.search(s) else 0),
-        "nbsp": combined.apply(lambda s: 1 if NBSP.search(s) else 0),
-        "ads": combined.apply(lambda s: 1 if ADS.search(s) else 0),
-        "device": combined.apply(lambda s: 1 if DEVICE_PREFIX.search(s) else 0),
-        "unsigned": unsigned_series(df.get("Signer"), len(df)).astype(int),
+        "len": combined.apply(len),           # String length
+        "args": combined.apply(lambda s: len([t for t in re.split(r'\s+', s.strip()) if t])),  # Argument count  
+        "slashes": combined.str.count(r'[\\/]'),  # Path depth
+        "dots": combined.str.count(r'\.'),        # File extensions
+        "entropy": combined.apply(shannon_entropy),  # Randomness
+        "unsigned": unsigned_series(df.get("Signer"), len(df)).astype(int),  # Digital signatures
     })
     
     # Handle infinite values and NaNs

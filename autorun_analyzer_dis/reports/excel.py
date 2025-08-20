@@ -82,10 +82,17 @@ def write_report(out_path: str,
     """
     out_path = ensure_xlsx(out_path)
     
+    # Calculate totals for ratio display
+    total_rows = len(df_src)
+    rules_count = len(df_rules)
+    pysad_count = 0 if df_pysad_top is None else len(df_pysad_top)
+    baseline_count = 0 if df_baseline is None else len(df_baseline)
+    unsigned_count = 0 if df_unsigned is None else len(df_unsigned)
+    
     with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
         wb = writer.book
         
-        # Generate summary sheet
+        # Generate summary sheet with ratios
         summary = pd.DataFrame({
             "Metric": [
                 "Rows scanned",
@@ -98,12 +105,12 @@ def write_report(out_path: str,
                 "Generated at",
             ],
             "Value": [
-                len(df_src),
+                total_rows,
                 ", ".join(df_src.columns.astype(str).tolist()),
-                len(df_rules),
-                (0 if df_pysad_top is None else len(df_pysad_top)),
-                (0 if df_baseline is None else len(df_baseline)),
-                (0 if df_unsigned is None else len(df_unsigned)),
+                f"{rules_count}/{total_rows}",
+                (f"{pysad_count}/{total_rows}" if df_pysad_top is not None else "0/0 (skipped)"),
+                f"{baseline_count}/{total_rows}",
+                f"{unsigned_count}/{total_rows}",
                 (pysad_method if df_pysad_top is not None else "-"),
                 dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             ],

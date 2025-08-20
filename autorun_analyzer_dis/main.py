@@ -62,7 +62,7 @@ def main(csv_path: str,
     unsigned = unsigned_series(df.get("Signer"), len(df))
     print(f"Unsigned binaries detected: {unsigned.sum()}/{len(df)}")
 
-    # Rules-based detection
+    # Rules-based detection (visual masquerading only)
     rules_mask, rule_reason = rule_flags_with_reason(df)
     df_rules = df.loc[rules_mask].copy()
     df_rules.insert(len(df_rules.columns), "rule_reason", rule_reason[rules_mask].values)
@@ -81,15 +81,15 @@ def main(csv_path: str,
     except RuntimeError as e:
         print(f"[!] PySAD skipped: {e}")
 
-    # Baseline comparison (optional)
+    # Baseline comparison (separate analysis)
     df_baseline = pd.DataFrame()
     if baseline_csv:
         try:
-            base_paths, base_hashes = load_baseline(baseline_csv)
-            print(f"[+] Baseline loaded: {len(base_paths):,} paths / {len(base_hashes):,} hashes")
-            df_baseline = compare_against_baseline(df, base_paths, base_hashes)
+            baseline_paths, baseline_hash_by_path = load_baseline(baseline_csv)
+            print(f"[+] Baseline loaded: {len(baseline_paths):,} paths / {len(baseline_hash_by_path):,} hashes")
+            df_baseline = compare_against_baseline(df, baseline_paths, baseline_hash_by_path)
         except Exception as e:
-            print(f"[!] Baseline load failed: {e}")
+            print(f"[!] Baseline analysis failed: {e}")
 
     # Unsigned items detection
     unsigned_mask = unsigned_series(df.get("Signer"), len(df))
