@@ -1,12 +1,69 @@
 """
-PySAD integration for anomaly detection.
+Updated core/pysad.py that works with the new modular system.
+This fixes the import error after deleting unsigned.py
 """
 
 import re
 import numpy as np
 import pandas as pd
 from .utils import shannon_entropy
-from .unsigned import unsigned_series
+
+
+def get_unsigned_mask(df: pd.DataFrame) -> pd.Series:
+    """
+    Get unsigned mask using the new modular detector system.
+    This replaces the old unsigned_series import.
+    """
+    try:
+        # Try to use the new modular detector
+        from ..detectors.unsigned_binaries import detect_unsigned_binaries
+        unsigned_df = detect_unsigned_binaries(df)
+        
+        # Convert to binary mask (0/1 series)
+        unsigned_mask = pd.Series(0, index=df.index, dtype=int)
+        if len(unsigned_df) > 0:
+            unsigned_mask.loc[unsigned_df.index] = 1
+        
+        return unsigned_mask
+        
+    except ImportError:
+        # Fallback: inline unsigned detection logic
+        print("[!] New detector not available, using fallback unsigned detection")
+        return fallback_unsigned_detection(df)
+
+
+def fallback_unsigned_detection(df: pd.DataFrame) -> pd.Series:
+    """
+    Fallback unsigned detection logic (copied from old unsigned.py).
+    This ensures pysad.py works even during transition.
+    """
+    if "Signer" not in df.columns:
+        return pd.Series(1, index=df.index, dtype=int)  # Assume unsigned if no Signer column
+    
+    signer_s = df["Signer"]
+    s = signer_s.astype("string")
+
+    # Only flag as unsigned if missing or explicitly unsigned
+    unsigned_mask = (
+        # Missing or empty values
+        s.isna() |
+        (s == "") |
+        (s.str.strip() == "") |
+        
+        # Entries that start with "(Not verified)" - case insensitive
+        s.str.contains(r"^\(not verified\)", case=False, regex=True, na=False) |
+        
+        # Exact matches for other known unsigned indicators (case insensitive)
+        (s.str.lower() == "microsoft windows publisher") |
+        (s.str.lower() == "n/a") |
+        (s.str.lower() == "unknown") |
+        (s.str.lower() == "unsigned") |
+        (s.str.lower() == "not verified") |
+        (s.str.lower() == "unable to verify")
+    )
+    
+    return unsigned_mask.fillna(True).astype(int)
+
 
 def build_features_for_pysad(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -36,11 +93,57 @@ def build_features_for_pysad(df: pd.DataFrame) -> pd.DataFrame:
         "slashes": combined.str.count(r'[\\/]'),  # Path depth
         "dots": combined.str.count(r'\.'),        # File extensions
         "entropy": combined.apply(shannon_entropy),  # Randomness
-        "unsigned": unsigned_series(df.get("Signer"), len(df)).astype(int),  # Digital signatures
+        "unsigned": get_unsigned_mask(df),  # Digital signatures using new system
     })
     
     # Handle infinite values and NaNs
     return feat.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+
+def build_meta_features_for_pysad(df: pd.DataFrame, detection_results: dict = None) -> pd.DataFrame:
+    """
+    Build enhanced feature matrix that includes results from modular detectors.
+    This is for the meta-detection system we discussed.
+    
+    Args:
+        df: Input DataFrame
+        detection_results: Dictionary of detection results from modular system
+        
+    Returns:
+        DataFrame with original + detection features for meta-anomaly detection
+    """
+    # Start with original features
+    original_features = build_features_for_pysad(df)
+    
+    # Add detection result features if available
+    if detection_results:
+        # Add binary features for each detector (0/1)
+        for detector_name, result_df in detection_results.items():
+            if isinstance(result_df, pd.DataFrame):
+                feature_name = f"flagged_by_{detector_name}"
+                original_features[feature_name] = 0
+                if len(result_df) > 0:
+                    original_features.loc[result_df.index, feature_name] = 1
+        
+        # Add meta-features
+        detection_columns = [col for col in original_features.columns if col.startswith('flagged_by_')]
+        if detection_columns:
+            # Total detection count
+            original_features['total_detections'] = original_features[detection_columns].sum(axis=1)
+            
+            # High priority detections (visual masquerading, unsigned)
+            high_priority_cols = [col for col in detection_columns 
+                                if 'visual_masquerading' in col or 'unsigned_binaries' in col]
+            if high_priority_cols:
+                original_features['high_priority_detections'] = original_features[high_priority_cols].sum(axis=1)
+            
+            # Medium priority detections (suspicious paths, hidden chars)
+            medium_priority_cols = [col for col in detection_columns 
+                                  if 'suspicious_paths' in col or 'hidden_characters' in col]
+            if medium_priority_cols:
+                original_features['medium_priority_detections'] = original_features[medium_priority_cols].sum(axis=1)
+    
+    return original_features
 
 
 def pysad_scores(features: pd.DataFrame, method: str = "hst") -> np.ndarray:
@@ -103,3 +206,83 @@ def pysad_scores(features: pd.DataFrame, method: str = "hst") -> np.ndarray:
         scores = np.zeros_like(scores)
     
     return scores
+
+
+def run_meta_pysad_analysis(df: pd.DataFrame, detection_results: dict, 
+                           method: str = "hst", top_pct: float = 3.0) -> tuple:
+    """
+    Run meta-PySAD analysis using detection results as features.
+    This implements your idea of feeding detector results into PySAD.
+    
+    Args:
+        df: Original DataFrame
+        detection_results: Results from all individual detectors
+        method: PySAD method ('hst' or 'loda')
+        top_pct: Percentage of top scores to return
+        
+    Returns:
+        Tuple of (top_meta_results_df, all_meta_results_df)
+    """
+    import math
+    
+    print(f"[+] Running meta-PySAD analysis (method: {method})...")
+    
+    # Build enhanced features including detection results
+    meta_features = build_meta_features_for_pysad(df, detection_results)
+    print(f"    Meta-features: {meta_features.shape[1]} features")
+    
+    # Run PySAD on meta-features
+    meta_scores = pysad_scores(meta_features, method=method)
+    
+    # Create results DataFrame
+    df_meta = df.copy()
+    df_meta['meta_pysad_score'] = np.round(meta_scores, 4)
+    
+    # Add detection summary
+    flagged_by = []
+    detection_counts = []
+    
+    for idx in df.index:
+        detectors = []
+        count = 0
+        for detector_name, result_df in detection_results.items():
+            if isinstance(result_df, pd.DataFrame) and idx in result_df.index:
+                detectors.append(detector_name.replace('_', ' ').title())
+                count += 1
+        
+        flagged_by.append(' + '.join(detectors) if detectors else 'None')
+        detection_counts.append(count)
+    
+    df_meta['flagged_by_detectors'] = flagged_by
+    df_meta['detection_count'] = detection_counts
+    
+    # Calculate combined risk score (meta score weighted by detection count)
+    df_meta['combined_risk_score'] = df_meta['meta_pysad_score'] * (1 + df_meta['detection_count'] * 0.2)
+    
+    # Get top percentile
+    k = max(1, int(math.ceil(len(df_meta) * (top_pct / 100.0))))
+    thresh = np.partition(df_meta['combined_risk_score'].values, -k)[-k]
+    
+    df_meta_top = df_meta[df_meta['combined_risk_score'] >= thresh].copy()
+    df_meta_top = df_meta_top.sort_values('combined_risk_score', ascending=False)
+    
+    print(f"    Meta-analysis complete: {len(df_meta_top)} top anomalies")
+    
+    return df_meta_top, df_meta
+
+
+# For backwards compatibility during transition
+def unsigned_series(signer_s, n):
+    """
+    DEPRECATED: Compatibility function for old code.
+    Use get_unsigned_mask() or the new modular detector system instead.
+    """
+    import warnings
+    warnings.warn(
+        "unsigned_series() in pysad.py is deprecated. Use detectors.unsigned_binaries instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    df_temp = pd.DataFrame({'Signer': signer_s} if signer_s is not None else {'Signer': [pd.NA] * n})
+    return get_unsigned_mask(df_temp)

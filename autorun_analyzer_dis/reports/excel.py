@@ -1,10 +1,11 @@
 """
-Excel report generation functionality.
+Excel report generation for modular detection system.
 """
 
 import os
 import datetime as dt
 import pandas as pd
+from typing import Dict
 
 
 def ensure_xlsx(path: str) -> str:
@@ -20,6 +21,9 @@ def ensure_xlsx(path: str) -> str:
 
 def autosize_worksheet(ws, df, wb):
     """Auto-size worksheet columns and apply formatting."""
+    if len(df) == 0:
+        return
+        
     # Create format objects
     wrap_fmt = wb.add_format({"text_wrap": True, "valign": "top"})
     num_fmt = wb.add_format({"num_format": "0.000", "valign": "top"})
@@ -55,94 +59,248 @@ def autosize_worksheet(ws, df, wb):
     ws.autofilter(0, 0, max(len(df), 1), max(len(df.columns) - 1, 0))
 
 
-def write_report(out_path: str,
-                 df_src: pd.DataFrame,
-                 df_all: pd.DataFrame,
-                 df_rules: pd.DataFrame,
-                 df_pysad_all: pd.DataFrame | None,
-                 df_pysad_top: pd.DataFrame | None,
-                 df_baseline: pd.DataFrame | None,
-                 df_unsigned: pd.DataFrame | None,
-                 top_pct: float,
-                 pysad_method: str):
+def write_modular_report(out_path: str,
+                        df_src: pd.DataFrame,
+                        results: Dict[str, pd.DataFrame],
+                        registry,
+                        df_combined: pd.DataFrame,
+                        top_pct: float,
+                        pysad_method: str,
+                        baseline_csv: str = None):
     """
-    Generate comprehensive Excel report with multiple worksheets.
+    Generate comprehensive Excel report for modular detection system.
     
     Args:
         out_path: Output Excel file path
-        df_src: Source DataFrame (for metrics)
-        df_all: All rows DataFrame
-        df_rules: Rules flagged DataFrame
-        df_pysad_all: PySAD scored DataFrame (optional)
-        df_pysad_top: Top PySAD scores DataFrame (optional)
-        df_baseline: Baseline findings DataFrame (optional)
-        df_unsigned: Unsigned items DataFrame (optional)
-        top_pct: Percentage for top PySAD scores
+        df_src: Source DataFrame
+        results: Dictionary of detection results
+        registry: DetectionRegistry instance
+        df_combined: Combined high-priority findings
+        top_pct: PySAD percentage threshold
         pysad_method: PySAD method used
+        baseline_csv: Baseline CSV path (for summary)
     """
     out_path = ensure_xlsx(out_path)
     
-    # Calculate totals for ratio display
+    # Calculate summary statistics
     total_rows = len(df_src)
-    rules_count = len(df_rules)
-    pysad_count = 0 if df_pysad_top is None else len(df_pysad_top)
-    baseline_count = 0 if df_baseline is None else len(df_baseline)
-    unsigned_count = 0 if df_unsigned is None else len(df_unsigned)
+    detection_counts = {}
+    for name, result_df in results.items():
+        if isinstance(result_df, pd.DataFrame):
+            detection_counts[name] = len(result_df)
+        else:
+            detection_counts[name] = 0
     
     with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
         wb = writer.book
         
-        # Generate summary sheet with ratios
-        summary = pd.DataFrame({
-            "Metric": [
-                "Rows scanned",
-                "Columns",
-                "Rules flagged",
-                (f"PySAD top {top_pct}%" if df_pysad_top is not None else "PySAD (skipped)"),
-                "Baseline findings",
-                "Unsigned items",
-                "PySAD method",
-                "Generated at",
-            ],
-            "Value": [
-                total_rows,
-                ", ".join(df_src.columns.astype(str).tolist()),
-                f"{rules_count}/{total_rows}",
-                (f"{pysad_count}/{total_rows}" if df_pysad_top is not None else "0/0 (skipped)"),
-                f"{baseline_count}/{total_rows}",
-                f"{unsigned_count}/{total_rows}",
-                (pysad_method if df_pysad_top is not None else "-"),
-                dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            ],
+        # 1. EXECUTIVE SUMMARY SHEET
+        create_executive_summary(writer, wb, df_src, detection_counts, df_combined, 
+                               top_pct, pysad_method, baseline_csv)
+        
+        # 2. DETECTION SUMMARY SHEET
+        summary_df = registry.get_summary()
+        summary_df.to_excel(writer, sheet_name="Detection_Summary", index=False)
+        autosize_worksheet(writer.sheets["Detection_Summary"], summary_df, wb)
+        
+        # 3. COMBINED HIGH-PRIORITY FINDINGS
+        if len(df_combined) > 0:
+            df_combined.to_excel(writer, sheet_name="High_Priority_Combined", index=False)
+            autosize_worksheet(writer.sheets["High_Priority_Combined"], df_combined, wb)
+        
+        # 4. INDIVIDUAL DETECTION SHEETS
+        for detector_name, df_results in results.items():
+            if isinstance(df_results, pd.DataFrame) and len(df_results) > 0:
+                # Clean sheet name (Excel limit: 31 chars, no special chars)
+                sheet_name = detector_name.replace('_', ' ').title()
+                sheet_name = sheet_name[:31]  # Excel sheet name limit
+                
+                df_results.to_excel(writer, sheet_name=sheet_name, index=False)
+                autosize_worksheet(writer.sheets[sheet_name], df_results, wb)
+        
+        # 5. OVERLAP ANALYSIS
+        create_overlap_analysis(writer, wb, df_src, results)
+        
+        # 6. ALL ROWS (for reference)
+        df_src.to_excel(writer, sheet_name="All_Rows", index=False)
+        autosize_worksheet(writer.sheets["All_Rows"], df_src, wb)
+
+    print(f"[+] Modular Excel report written to: {out_path}")
+
+
+def create_executive_summary(writer, wb, df_src, detection_counts, df_combined, 
+                           top_pct, pysad_method, baseline_csv):
+    """Create executive summary sheet with key metrics."""
+    
+    # Calculate key metrics
+    total_rows = len(df_src)
+    total_flagged = len(set().union(*[
+        set(range(len(df))) for df in writer.sheets.keys() 
+        if hasattr(writer.sheets[df], 'index')
+    ]))
+    
+    # Create summary data
+    summary_data = []
+    
+    # Basic metrics
+    summary_data.append(["SCAN OVERVIEW", ""])
+    summary_data.append(["Total entries scanned", f"{total_rows:,}"])
+    summary_data.append(["Columns analyzed", f"{len(df_src.columns)}"])
+    summary_data.append(["Scan timestamp", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    summary_data.append(["", ""])
+    
+    # Detection results
+    summary_data.append(["DETECTION RESULTS", ""])
+    for detector_name, count in detection_counts.items():
+        display_name = detector_name.replace('_', ' ').title()
+        percentage = (count / total_rows * 100) if total_rows > 0 else 0
+        summary_data.append([display_name, f"{count:,} ({percentage:.1f}%)"])
+    
+    summary_data.append(["", ""])
+    summary_data.append(["High-Priority Combined", f"{len(df_combined):,}"])
+    
+    # Configuration
+    summary_data.append(["", ""])
+    summary_data.append(["CONFIGURATION", ""])
+    summary_data.append(["PySAD Method", pysad_method])
+    summary_data.append(["PySAD Top Percentile", f"{top_pct}%"])
+    summary_data.append(["Baseline Used", "Yes" if baseline_csv else "No"])
+    if baseline_csv:
+        summary_data.append(["Baseline File", os.path.basename(baseline_csv)])
+    
+    # Risk assessment
+    summary_data.append(["", ""])
+    summary_data.append(["RISK ASSESSMENT", ""])
+    
+    # Calculate risk levels based on detection types
+    high_risk = detection_counts.get('visual_masquerading', 0) + len(df_combined)
+    medium_risk = detection_counts.get('unsigned_binaries', 0) + detection_counts.get('suspicious_paths', 0)
+    low_risk = detection_counts.get('hidden_characters', 0) + detection_counts.get('anomaly_detection', 0)
+    
+    summary_data.append(["High Risk Items", f"{high_risk:,}"])
+    summary_data.append(["Medium Risk Items", f"{medium_risk:,}"])
+    summary_data.append(["Low Risk Items", f"{low_risk:,}"])
+    
+    # Create DataFrame and write to Excel
+    summary_df = pd.DataFrame(summary_data, columns=["Metric", "Value"])
+    summary_df.to_excel(writer, sheet_name="Executive_Summary", index=False)
+    
+    # Format the summary sheet
+    ws = writer.sheets["Executive_Summary"]
+    
+    # Create formats
+    header_fmt = wb.add_format({
+        'bold': True, 
+        'font_size': 12,
+        'bg_color': '#D7E4BC',
+        'border': 1
+    })
+    
+    section_fmt = wb.add_format({
+        'bold': True,
+        'font_size': 11,
+        'bg_color': '#F2F2F2'
+    })
+    
+    # Apply formatting
+    ws.set_column('A:A', 25)
+    ws.set_column('B:B', 20)
+    
+    # Color code risk levels
+    for i, (metric, value) in enumerate(summary_data):
+        if metric in ["SCAN OVERVIEW", "DETECTION RESULTS", "CONFIGURATION", "RISK ASSESSMENT"]:
+            ws.set_row(i + 1, None, section_fmt)
+
+
+def create_overlap_analysis(writer, wb, df_src, results):
+    """Create overlap analysis showing items detected by multiple methods."""
+    
+    # Get indices for each detector
+    detector_indices = {}
+    for detector_name, df_results in results.items():
+        if isinstance(df_results, pd.DataFrame) and len(df_results) > 0:
+            detector_indices[detector_name] = set(df_results.index)
+    
+    overlap_data = []
+    
+    # Calculate pairwise overlaps
+    detector_names = list(detector_indices.keys())
+    for i, detector1 in enumerate(detector_names):
+        for j, detector2 in enumerate(detector_names):
+            if i < j:  # Avoid duplicates
+                overlap = detector_indices[detector1] & detector_indices[detector2]
+                if len(overlap) > 0:
+                    name1 = detector1.replace('_', ' ').title()
+                    name2 = detector2.replace('_', ' ').title()
+                    overlap_data.append({
+                        'Detector 1': name1,
+                        'Detector 2': name2,
+                        'Overlap Count': len(overlap),
+                        'Percentage': f"{len(overlap) / len(df_src) * 100:.2f}%"
+                    })
+    
+    # Calculate items detected by multiple methods
+    multi_detection_counts = {}
+    for idx in df_src.index:
+        detection_count = sum(1 for indices in detector_indices.values() if idx in indices)
+        if detection_count > 1:
+            multi_detection_counts[detection_count] = multi_detection_counts.get(detection_count, 0) + 1
+    
+    # Add multi-detection summary
+    for count, items in multi_detection_counts.items():
+        overlap_data.append({
+            'Detector 1': f'Items detected by {count} methods',
+            'Detector 2': '',
+            'Overlap Count': items,
+            'Percentage': f"{items / len(df_src) * 100:.2f}%"
         })
-        summary.to_excel(writer, sheet_name="Summary", index=False)
-        autosize_worksheet(writer.sheets["Summary"], summary, wb)
+    
+    if overlap_data:
+        overlap_df = pd.DataFrame(overlap_data)
+        overlap_df.to_excel(writer, sheet_name="Overlap_Analysis", index=False)
+        autosize_worksheet(writer.sheets["Overlap_Analysis"], overlap_df, wb)
 
-        # All rows sheet
-        df_all.to_excel(writer, sheet_name="AllRows", index=False)
-        autosize_worksheet(writer.sheets["AllRows"], df_all, wb)
 
-        # Rules flagged sheet
-        df_rules.to_excel(writer, sheet_name="Rules_Flagged", index=False)
-        autosize_worksheet(writer.sheets["Rules_Flagged"], df_rules, wb)
-
-        # PySAD sheets (only if available)
-        if df_pysad_all is not None:
-            df_pysad_all.to_excel(writer, sheet_name="PySAD_Scored", index=False)
-            autosize_worksheet(writer.sheets["PySAD_Scored"], df_pysad_all, wb)
-        
-        if df_pysad_top is not None:
-            df_pysad_top.to_excel(writer, sheet_name="PySAD_TopN", index=False)
-            autosize_worksheet(writer.sheets["PySAD_TopN"], df_pysad_top, wb)
-
-        # Baseline findings sheet
-        if df_baseline is not None and len(df_baseline) > 0:
-            df_baseline.to_excel(writer, sheet_name="Baseline_Findings", index=False)
-            autosize_worksheet(writer.sheets["Baseline_Findings"], df_baseline, wb)
-        
-        # Unsigned items sheet
-        if df_unsigned is not None and len(df_unsigned) > 0:
-            df_unsigned.to_excel(writer, sheet_name="Unsigned_Items", index=False)
-            autosize_worksheet(writer.sheets["Unsigned_Items"], df_unsigned, wb)
-
-    print(f"[+] Excel report written to: {out_path}")
+# Legacy function for backwards compatibility
+def write_report(out_path: str, df_src: pd.DataFrame, df_all: pd.DataFrame,
+                df_rules: pd.DataFrame, df_pysad_all: pd.DataFrame | None,
+                df_pysad_top: pd.DataFrame | None, df_baseline: pd.DataFrame | None,
+                df_unsigned: pd.DataFrame | None, top_pct: float, pysad_method: str):
+    """
+    Legacy report function - converts old format to modular format.
+    This maintains backwards compatibility with existing code.
+    """
+    print("[!] Using legacy report format - consider upgrading to modular system")
+    
+    # Convert old format to modular format
+    results = {}
+    if len(df_rules) > 0:
+        results['visual_masquerading'] = df_rules
+    if df_unsigned is not None and len(df_unsigned) > 0:
+        results['unsigned_binaries'] = df_unsigned
+    if df_baseline is not None and len(df_baseline) > 0:
+        results['baseline_comparison'] = df_baseline
+    if df_pysad_top is not None and len(df_pysad_top) > 0:
+        results['anomaly_detection'] = df_pysad_top
+    
+    # Create a minimal registry for the summary
+    class LegacyRegistry:
+        def get_summary(self):
+            summary = []
+            for name, df_result in results.items():
+                summary.append({
+                    'Detector': name.replace('_', ' ').title(),
+                    'Description': 'Legacy detection method',
+                    'Findings': len(df_result),
+                    'Enabled': True
+                })
+            return pd.DataFrame(summary)
+    
+    registry = LegacyRegistry()
+    
+    # No combined analysis in legacy mode
+    df_combined = pd.DataFrame()
+    
+    # Generate report
+    write_modular_report(out_path, df_src, results, registry, df_combined, 
+                        top_pct, pysad_method, None)
