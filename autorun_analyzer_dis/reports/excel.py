@@ -154,7 +154,7 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
     for detector_name, count in detection_counts.items():
         display_name = detector_name.replace('_', ' ').title()
         percentage = (count / total_rows * 100) if total_rows > 0 else 0
-        summary_data.append([display_name, f"{count:,} ({percentage:.1f}%)"])
+        summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
     
     summary_data.append(["", ""])
     summary_data.append(["High-Priority Combined", f"{len(df_combined):,}"])
