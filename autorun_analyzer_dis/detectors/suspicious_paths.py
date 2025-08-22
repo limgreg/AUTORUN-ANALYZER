@@ -1,6 +1,6 @@
 """
-Baseline-focused suspicious paths detector.
-Removed generic rule-based detection in favor of baseline-driven analysis.
+Pure Path Analysis Module - suspicious_paths.py
+ONLY analyzes file paths and locations. No hash checking (that's baseline_comparison.py's job).
 """
 
 import pandas as pd
@@ -11,15 +11,17 @@ from ..core.utils import normalize_path
 
 def detect_suspicious_paths(df: pd.DataFrame, baseline_csv: str = None) -> pd.DataFrame:
     """
-    Detect suspicious file paths using baseline comparison as the primary method.
-    Only includes minimal critical rules as fallback when no baseline is available.
+    PURE PATH LOCATION ANALYSIS - answers: "Is this path suspicious for this environment?"
+    
+    This module ONLY cares about WHERE files are located, not their integrity.
+    Hash verification is handled by baseline_comparison.py module.
     
     Args:
         df: Input DataFrame
-        baseline_csv: Path to baseline CSV (REQUIRED for meaningful results)
+        baseline_csv: Path to baseline CSV (for known-good path whitelist)
         
     Returns:
-        DataFrame with suspicious path findings
+        DataFrame with suspicious path findings (location-based only)
     """
     # Find path column
     col_img = next((c for c in df.columns if c.lower() in
@@ -30,25 +32,24 @@ def detect_suspicious_paths(df: pd.DataFrame, baseline_csv: str = None) -> pd.Da
     
     findings = []
     
-    # PRIMARY METHOD: Baseline-driven detection
     if baseline_csv:
-        findings.extend(_baseline_driven_detection(df, col_img, baseline_csv))
+        print(f"[+] Using baseline-driven path analysis")
+        findings.extend(_baseline_path_intelligence(df, col_img, baseline_csv))
     else:
-        # FALLBACK: Only most critical rules when no baseline available
-        print("[!] No baseline provided for suspicious paths - using minimal fallback detection")
-        findings.extend(_critical_fallback_detection(df, col_img))
+        print(f"[+] Using pattern-based path analysis (no baseline)")
+        findings.extend(_pattern_based_path_analysis(df, col_img))
     
     return pd.DataFrame(findings)
 
 
-def _baseline_driven_detection(df: pd.DataFrame, col_img: str, baseline_csv: str) -> list:
+def _baseline_path_intelligence(df: pd.DataFrame, col_img: str, baseline_csv: str) -> list:
     """
-    Primary detection method using baseline comparison.
-    Much more accurate than rule-based detection.
+    Environment-aware path analysis using baseline as whitelist.
+    Question: "Is this path known-good for THIS environment?"
     """
     try:
-        baseline_paths, baseline_hash_by_path = load_baseline(baseline_csv)
-        print(f"[+] Loaded {len(baseline_paths)} baseline paths for suspicious path analysis")
+        baseline_paths, _ = load_baseline(baseline_csv)  # Only need paths, ignore hashes
+        print(f"[+] Loaded {len(baseline_paths)} known-good paths for location analysis")
     except Exception as e:
         print(f"[!] Failed to load baseline: {e}")
         return []
@@ -62,83 +63,117 @@ def _baseline_driven_detection(df: pd.DataFrame, col_img: str, baseline_csv: str
             
         path_lower = path.lower()
         normalized_path = normalize_path(path)
-        reasons = []
-        suspicion_level = "Medium"
         
-        # Check if path is NOT in baseline
+        # CORE QUESTION: Is this path in our environment's whitelist?
         if normalized_path and normalized_path not in baseline_paths:
+            suspicion_reason = _analyze_unknown_path_location(path_lower)
             
-            # CRITICAL: Unknown paths in system directories (HIGH PRIORITY)
-            if any(sys_path in path_lower for sys_path in [
-                'c:\\windows\\system32\\',
-                'c:\\windows\\syswow64\\',
-                'c:\\windows\\',
-                'c:\\program files\\microsoft\\',
-                'c:\\program files\\windows'
-            ]):
-                reasons.append("Unknown file in critical system directory (not in baseline)")
-                suspicion_level = "Critical"
-            
-            # HIGH: Unknown executables in program directories
-            elif any(prog_path in path_lower for prog_path in [
-                'c:\\program files\\',
-                'c:\\program files (x86)\\'
-            ]) and path_lower.endswith('.exe'):
-                reasons.append("Unknown executable in program directory (not in baseline)")
-                suspicion_level = "High"
-            
-            # MEDIUM-HIGH: Unknown paths in autorun locations
-            elif any(autorun_path in path_lower for autorun_path in [
-                '\\startup\\',
-                '\\run\\',
-                '\\runonce\\',
-                'c:\\programdata\\microsoft\\windows\\start menu\\',
-                'c:\\users\\all users\\'
-            ]):
-                reasons.append("Unknown autorun entry (not in baseline)")
-                suspicion_level = "Medium-High"
-            
-            # MEDIUM: Unknown executables anywhere
-            elif path_lower.endswith('.exe'):
-                reasons.append("Unknown executable (not in baseline)")
-                suspicion_level = "Medium"
-            
-            # LOW: Other unknown files (only flag if in somewhat suspicious locations)
-            elif any(watch_path in path_lower for watch_path in [
-                'c:\\programdata\\',
-                'c:\\users\\public\\',
-                '\\temp\\',
-                '\\tmp\\'
-            ]):
-                reasons.append("Unknown file in watched location (not in baseline)")
-                suspicion_level = "Low"
-        
-        else:
-            # Path exists in baseline - check for hash mismatches
-            expected_hash = baseline_hash_by_path.get(normalized_path)
-            if expected_hash:
-                current_hash = _get_file_hash(df, i)
-                if current_hash and current_hash != expected_hash:
-                    reasons.append("File hash mismatch vs baseline (potential replacement)")
-                    suspicion_level = "Critical"
-        
-        # Add to findings if any issues detected
-        if reasons:
-            row_out = df.loc[i].copy()
-            reason_text = "; ".join(reasons)
-            row_out["detection_reason"] = f"[{suspicion_level}] {reason_text}"
-            row_out["detection_type"] = "Suspicious Path (Baseline-Driven)"
-            row_out["baseline_status"] = "NOT in Baseline" if normalized_path not in baseline_paths else "Hash Mismatch"
-            row_out["suspicion_level"] = suspicion_level
-            findings.append(row_out)
+            if suspicion_reason:
+                row_out = df.loc[i].copy()
+                row_out["detection_reason"] = suspicion_reason['reason']
+                row_out["detection_type"] = "Suspicious Path Location"
+                row_out["suspicion_level"] = suspicion_reason['level']
+                row_out["location_category"] = suspicion_reason['category']
+                row_out["baseline_status"] = "Unknown Path"
+                findings.append(row_out)
     
     return findings
 
 
-def _critical_fallback_detection(df: pd.DataFrame, col_img: str) -> list:
+def _analyze_unknown_path_location(path_lower: str) -> dict:
     """
-    Minimal fallback detection when no baseline is available.
-    Only flags the most obviously suspicious patterns.
+    Analyze WHY an unknown path is suspicious based on its LOCATION.
+    Returns None if location is not particularly suspicious.
+    """
+    
+    # CRITICAL: Core system directories
+    if any(critical_dir in path_lower for critical_dir in [
+        'c:\\windows\\system32\\',
+        'c:\\windows\\syswow64\\',
+        'c:\\windows\\winsxs\\',
+    ]):
+        return {
+            'reason': f"[CRITICAL] Unknown file in core system directory (not in baseline)",
+            'level': 'Critical',
+            'category': 'Core System Directory'
+        }
+    
+    # HIGH: Microsoft program directories
+    if any(ms_dir in path_lower for ms_dir in [
+        'c:\\program files\\microsoft\\',
+        'c:\\program files\\windows nt\\',
+        'c:\\program files\\common files\\microsoft\\',
+        'c:\\program files (x86)\\microsoft\\',
+    ]) and path_lower.endswith('.exe'):
+        return {
+            'reason': f"[HIGH] Unknown executable in Microsoft directory (not in baseline)",
+            'level': 'High', 
+            'category': 'Microsoft Program Directory'
+        }
+    
+    # HIGH: Windows directory (non-system32)
+    if path_lower.startswith('c:\\windows\\') and path_lower.endswith('.exe'):
+        return {
+            'reason': f"[HIGH] Unknown executable in Windows directory (not in baseline)",
+            'level': 'High',
+            'category': 'Windows Directory'
+        }
+    
+    # MEDIUM-HIGH: Autorun/Startup locations
+    if any(autorun_dir in path_lower for autorun_dir in [
+        '\\startup\\',
+        '\\start menu\\programs\\startup\\',
+        'c:\\programdata\\microsoft\\windows\\start menu\\',
+        'c:\\users\\all users\\microsoft\\windows\\start menu\\',
+        '\\appdata\\roaming\\microsoft\\windows\\start menu\\programs\\startup\\'
+    ]):
+        return {
+            'reason': f"[MEDIUM-HIGH] Unknown autorun/startup entry (not in baseline)",
+            'level': 'Medium-High',
+            'category': 'Autorun Location'
+        }
+    
+    # MEDIUM: Program Files executables
+    if (path_lower.startswith('c:\\program files\\') or 
+        path_lower.startswith('c:\\program files (x86)\\')) and path_lower.endswith('.exe'):
+        return {
+            'reason': f"[MEDIUM] Unknown executable in Program Files (not in baseline)",
+            'level': 'Medium',
+            'category': 'Program Files'
+        }
+    
+    # MEDIUM: Common persistence locations
+    if any(persist_dir in path_lower for persist_dir in [
+        'c:\\programdata\\',
+        'c:\\users\\public\\',
+    ]) and path_lower.endswith('.exe'):
+        return {
+            'reason': f"[MEDIUM] Unknown executable in common persistence location (not in baseline)",
+            'level': 'Medium',
+            'category': 'Persistence Location'
+        }
+    
+    # LOW: Other monitored locations (registry run keys, etc.)
+    if any(monitor_dir in path_lower for monitor_dir in [
+        '\\temp\\',
+        '\\tmp\\',
+        'c:\\windows\\temp\\',
+        '\\appdata\\local\\temp\\',
+    ]) and path_lower.endswith('.exe'):
+        return {
+            'reason': f"[LOW] Unknown executable in temporary location (not in baseline)",
+            'level': 'Low',
+            'category': 'Temporary Location'
+        }
+    
+    # Not in a particularly suspicious location
+    return None
+
+
+def _pattern_based_path_analysis(df: pd.DataFrame, col_img: str) -> list:
+    """
+    Fallback path analysis using universal suspicious patterns.
+    Only flags obviously malicious path patterns when no baseline available.
     """
     findings = []
     
@@ -148,140 +183,96 @@ def _critical_fallback_detection(df: pd.DataFrame, col_img: str) -> list:
             continue
             
         path_lower = path.lower()
-        reasons = []
+        suspicious_patterns = []
         
-        # ONLY the most critical patterns that are almost always suspicious
-        
-        # 1. System32 masquerading (fake system32 directories)
+        # Pattern 1: System32 masquerading
         if '\\system32\\' in path_lower and not path_lower.startswith('c:\\windows\\system32\\'):
-            reasons.append("Fake system32 directory masquerading")
+            suspicious_patterns.append("Fake System32 directory masquerading")
         
-        # 2. Obviously malicious file extensions in system directories
-        malicious_extensions = ['.bat', '.cmd', '.vbs', '.js', '.ps1', '.scr']
+        # Pattern 2: Hidden system naming outside Windows
+        if ('\\$' in path_lower or path_lower.startswith('$')) and not path_lower.startswith('c:\\windows\\'):
+            suspicious_patterns.append("Hidden/system naming pattern outside Windows")
+        
+        # Pattern 3: Script files in system directories  
+        script_extensions = ['.bat', '.cmd', '.vbs', '.js', '.ps1', '.scr', '.com', '.pif']
         if (any(sys_path in path_lower for sys_path in ['c:\\windows\\system32\\', 'c:\\windows\\']) and
-            any(path_lower.endswith(ext) for ext in malicious_extensions)):
-            reasons.append("Script file in system directory (unusual)")
+            any(path_lower.endswith(ext) for ext in script_extensions)):
+            suspicious_patterns.append("Script file in system directory")
         
-        # 3. Executables with illegal characters (almost always malicious)
+        # Pattern 4: Illegal filename characters
         try:
             filename = os.path.basename(path_lower)
             illegal_chars = ['<', '>', ':', '"', '|', '?', '*']
             found_illegal = [char for char in illegal_chars if char in filename]
-            if found_illegal and path_lower.endswith('.exe'):
-                reasons.append(f"Executable with illegal filename characters: {', '.join(found_illegal)}")
+            if found_illegal:
+                suspicious_patterns.append(f"Illegal filename characters: {', '.join(found_illegal)}")
         except:
             pass
         
-        # 4. Extremely long paths (buffer overflow attempts)
-        if len(path) > 300:  # Even longer threshold for fallback
-            reasons.append(f"Extremely long path ({len(path)} characters) - potential exploit")
+        # Pattern 5: Double extensions (masquerading)
+        try:
+            filename = os.path.basename(path_lower)
+            if filename.count('.') >= 2 and any(path_lower.endswith(ext) for ext in ['.exe', '.scr', '.com', '.bat']):
+                suspicious_patterns.append("Double extension pattern (potential masquerading)")
+        except:
+            pass
         
-        # Add to findings if any critical issues detected
-        if reasons:
+        # Pattern 6: Extremely long paths
+        if len(path) > 300:
+            suspicious_patterns.append(f"Extremely long path ({len(path)} chars)")
+        
+        if suspicious_patterns:
             row_out = df.loc[i].copy()
-            reason_text = "; ".join(reasons)
-            row_out["detection_reason"] = f"[Critical] {reason_text}"
-            row_out["detection_type"] = "Suspicious Path (Critical Fallback)"
-            row_out["baseline_status"] = "No Baseline Available"
+            row_out["detection_reason"] = f"[CRITICAL] {'; '.join(suspicious_patterns)}"
+            row_out["detection_type"] = "Suspicious Path Pattern"
             row_out["suspicion_level"] = "Critical"
+            row_out["location_category"] = "Malicious Pattern"
+            row_out["baseline_status"] = "Pattern-based Detection"
             findings.append(row_out)
     
     return findings
 
 
-def _get_file_hash(df: pd.DataFrame, index: int) -> str:
+def get_path_analysis_summary(baseline_csv: str = None) -> dict:
     """
-    Extract file hash from DataFrame row (prefers SHA256 > SHA1 > MD5).
-    """
-    cols_lower = {c.lower(): c for c in df.columns}
-    
-    # Check for hash columns in order of preference
-    hash_columns = [
-        cols_lower.get("sha-256") or cols_lower.get("sha256"),
-        cols_lower.get("sha-1") or cols_lower.get("sha1"),
-        cols_lower.get("md5")
-    ]
-    
-    for hash_col in hash_columns:
-        if hash_col and pd.notna(df.at[index, hash_col]):
-            return str(df.at[index, hash_col]).strip().lower()
-    
-    return None
-
-
-def get_baseline_statistics(baseline_csv: str) -> dict:
-    """
-    Get statistics about the baseline for reporting purposes.
+    Get summary of path analysis capabilities.
     """
     if not baseline_csv:
-        return {"status": "No baseline provided"}
+        return {
+            'analysis_type': 'Pattern-based',
+            'description': 'Universal suspicious path patterns only',
+            'accuracy': 'Basic - high false negatives, low false positives'
+        }
     
     try:
-        baseline_paths, baseline_hash_by_path = load_baseline(baseline_csv)
+        baseline_paths, _ = load_baseline(baseline_csv)
         
-        # Categorize paths by location
-        categories = {
-            'system_paths': len([p for p in baseline_paths if 'c:\\windows\\' in p]),
-            'program_paths': len([p for p in baseline_paths if 'c:\\program files' in p]),
-            'programdata_paths': len([p for p in baseline_paths if 'c:\\programdata\\' in p]),
-            'user_paths': len([p for p in baseline_paths if 'c:\\users\\' in p]),
-            'other_paths': 0
+        # Categorize baseline paths by location type
+        location_categories = {
+            'system_critical': len([p for p in baseline_paths if any(x in p for x in ['system32', 'syswow64', 'winsxs'])]),
+            'windows_other': len([p for p in baseline_paths if 'c:\\windows\\' in p and not any(x in p for x in ['system32', 'syswow64', 'winsxs'])]),
+            'program_files': len([p for p in baseline_paths if 'program files' in p]),
+            'programdata': len([p for p in baseline_paths if 'programdata' in p]),
+            'users': len([p for p in baseline_paths if 'c:\\users\\' in p]),
+            'other': 0
         }
         
-        # Calculate 'other' paths
-        categorized_count = sum(categories.values()) - categories['other_paths']
-        categories['other_paths'] = len(baseline_paths) - categorized_count
+        # Calculate other
+        categorized = sum(location_categories.values()) - location_categories['other']
+        location_categories['other'] = len(baseline_paths) - categorized
         
         return {
-            'status': 'Loaded successfully',
-            'total_baseline_paths': len(baseline_paths),
-            'paths_with_hashes': len(baseline_hash_by_path),
-            'hash_coverage_pct': round(len(baseline_hash_by_path)/len(baseline_paths)*100, 1) if baseline_paths else 0,
-            'categories': categories,
+            'analysis_type': 'Baseline-driven',
+            'description': 'Environment-aware path intelligence',
+            'accuracy': 'High - low false positives, high threat detection',
+            'total_known_paths': len(baseline_paths),
+            'location_categories': location_categories,
             'baseline_file': os.path.basename(baseline_csv)
         }
         
     except Exception as e:
         return {
-            'status': 'Failed to load',
-            'error': str(e),
-            'baseline_file': os.path.basename(baseline_csv)
+            'analysis_type': 'Baseline-driven (failed)',
+            'description': f'Failed to load baseline: {str(e)}',
+            'accuracy': 'Degraded to pattern-based'
         }
-
-
-def print_detection_summary(baseline_stats: dict):
-    """
-    Print a summary of what the baseline-driven detection will focus on.
-    """
-    print("\n" + "="*50)
-    print("BASELINE-DRIVEN SUSPICIOUS PATH DETECTION")
-    print("="*50)
-    
-    if baseline_stats.get('status') == 'Loaded successfully':
-        print(f"✅ Baseline loaded: {baseline_stats['baseline_file']}")
-        print(f"📊 {baseline_stats['total_baseline_paths']:,} baseline paths")
-        print(f"🔒 {baseline_stats['hash_coverage_pct']:.1f}% have hashes for integrity checking")
-        
-        print(f"\n📂 Path categories in baseline:")
-        cats = baseline_stats['categories']
-        print(f"   System: {cats['system_paths']:,}")
-        print(f"   Programs: {cats['program_paths']:,}")
-        print(f"   ProgramData: {cats['programdata_paths']:,}")
-        print(f"   Users: {cats['user_paths']:,}")
-        print(f"   Other: {cats['other_paths']:,}")
-        
-        print(f"\n🎯 Detection focus:")
-        print(f"   🔥 Critical: Unknown files in system directories")
-        print(f"   ⚠️  High: Unknown executables in program directories")
-        print(f"   📍 Medium: Unknown autorun entries")
-        print(f"   🔍 Hash: File replacement detection")
-        
-    else:
-        print(f"❌ Baseline not available: {baseline_stats.get('error', 'Unknown error')}")
-        print(f"🔙 Using minimal fallback detection:")
-        print(f"   - System32 masquerading")
-        print(f"   - Scripts in system directories")
-        print(f"   - Illegal filename characters")
-        print(f"   - Extremely long paths")
-    
-    print("="*50)
