@@ -274,8 +274,8 @@ class DetectionRegistry:
         print("=" * 60)
         return results
     
-    def get_detection_summary(self) -> pd.DataFrame:
-        """Get clean summary with architecture info."""
+    def get_summary(self) -> pd.DataFrame:
+        """Get clean summary with architecture info (for compatibility with excel report)."""
         summary = []
         for name, detector in self.detectors.items():
             results = detector.get('results')
@@ -289,11 +289,11 @@ class DetectionRegistry:
                 status += " (Baseline Enhanced)"
             
             summary.append({
-                'Module': name.replace('_', ' ').title(),
-                'Responsibility': detector['responsibility'],
+                'Detector': name.replace('_', ' ').title(),  # Use 'Detector' for excel compatibility
                 'Description': detector['description'],
                 'Findings': count,
-                'Status': status
+                'Enabled': detector['enabled'],
+                'Responsibility': detector['responsibility']
             })
         
         return pd.DataFrame(summary)
