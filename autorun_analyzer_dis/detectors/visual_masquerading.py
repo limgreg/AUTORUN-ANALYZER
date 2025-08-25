@@ -1,16 +1,53 @@
 """
 Visual masquerading detector - moved from rules.py
 Detects filenames using confusable characters.
+Now also dynamically detects mixed scripts (Latin + Greek/Cyrillic/etc.).
 """
 
 import pandas as pd
+import unicodedata
 from ..core.utils import file_name
+
+
+def get_script(char: str) -> str:
+    """Return the Unicode script family for a character."""
+    try:
+        name = unicodedata.name(char)
+        if "LATIN" in name:
+            return "Latin"
+        elif "GREEK" in name:
+            return "Greek"
+        elif "CYRILLIC" in name:
+            return "Cyrillic"
+        elif "ARABIC" in name:
+            return "Arabic"
+        elif "HEBREW" in name:
+            return "Hebrew"
+        elif "DEVANAGARI" in name:
+            return "Devanagari"
+        elif "HIRAGANA" in name or "KATAKANA" in name or "CJK" in name or "HANGUL" in name:
+            return "CJK"
+        else:
+            return "Other"
+    except ValueError:
+        return "Other"
+
+
+def detect_mixed_scripts(text: str) -> dict:
+    """Return a dict of scripts and the characters found for each script in a string."""
+    scripts = {}
+    for ch in text:
+        if ch.isalpha():  # only consider letters
+            script = get_script(ch)
+            scripts.setdefault(script, []).append(ch)
+    return scripts
 
 
 def detect_visual_masquerading(df: pd.DataFrame) -> pd.DataFrame:
     """
     Detect visual masquerading - filenames using confusable characters that look identical
     to legitimate names but use different Unicode characters (e.g., I vs l, O vs 0).
+    Also dynamically detects mixed scripts (Latin + others).
     
     Args:
         df: Input DataFrame
@@ -73,7 +110,7 @@ def detect_visual_masquerading(df: pd.DataFrame) -> pd.DataFrame:
         filename = fname.iat[i]
         reason_parts = []
         
-        # Check if filename contains confusable characters
+        # --- Existing hardcoded confusable detection ---
         has_confusables = False
         confusable_chars_found = []
         
@@ -83,23 +120,30 @@ def detect_visual_masquerading(df: pd.DataFrame) -> pd.DataFrame:
                 legitimate_char = confusables[char]
                 confusable_chars_found.append(f"'{char}' (should be '{legitimate_char}')")
         
-        # If we found confusables, check if it might be masquerading a legitimate name
         if has_confusables:
-            # Create normalized version by replacing confusables with legitimate characters
             normalized = filename
             for confusable_char, legitimate_char in confusables.items():
                 normalized = normalized.replace(confusable_char, legitimate_char)
             
-            # ONLY flag if the filename actually changed during normalization
             if normalized != filename:
-                # Check if normalized version matches a legitimate name
                 if normalized.lower() in {name.lower() for name in legitimate_names}:
                     reason_parts.append(f"Visual masquerading: {filename} → {normalized} using {', '.join(confusable_chars_found)}")
-                
-                # Also flag executables with actual confusable character substitutions
                 elif filename.endswith('.exe'):
                     reason_parts.append(f"Executable with confusable character substitutions: {filename} → {normalized}")
         
+        # --- New dynamic mixed-script detection ---
+        scripts_found = detect_mixed_scripts(filename)
+        if len(scripts_found) > 1:
+            reason_parts.append(f"Mixed scripts detected: {scripts_found}")
+            
+            # Check if stripping non-Latin reveals a known legitimate executable
+            normalized = "".join(
+                ch for ch in filename if get_script(ch) == "Latin" or not ch.isalpha()
+            )
+            if normalized.lower() in {name.lower() for name in legitimate_names}:
+                reason_parts.append(f"Possible masquerading of {normalized} using mixed scripts")
+        
+        # --- Collect result ---
         if reason_parts:
             row_out = df.loc[i].copy()
             row_out["detection_reason"] = "; ".join(reason_parts)
