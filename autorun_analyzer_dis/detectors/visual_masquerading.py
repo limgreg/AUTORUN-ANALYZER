@@ -42,7 +42,7 @@ def detect_mixed_scripts(text: str) -> dict:
     return scripts
 
 
-def detect_visual_masquerading(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+def detect_visual_masquerading(df: pd.DataFrame) -> pd.DataFrame:
     """
     Detect visual masquerading using mixed scripts detection.
     
@@ -53,24 +53,24 @@ def detect_visual_masquerading(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         df: Input DataFrame
         
     Returns:
-        tuple: (mask of flagged rows, series of reasons)
+        DataFrame: Findings with detection details (NOT mask/reasons tuple)
     """
     # Find the main path column
     col_img = next((c for c in df.columns if c.lower() in
                    ['image path', 'image', 'path', 'location', 'command', 'fullname']), None)
     
     if not col_img:
-        # Return empty results if no path column found
-        empty_mask = pd.Series([False] * len(df), index=df.index)
-        empty_reasons = pd.Series([""] * len(df), index=df.index)
-        return empty_mask, empty_reasons
+        return pd.DataFrame()
     
     text = df[col_img].astype(str)
     fname = text.apply(file_name)
     
-    # Vectorized processing using apply
-    def analyze_filename(filename: str) -> tuple[bool, str]:
-        """Analyze single filename for mixed scripts."""
+    findings = []
+    
+    for i in df.index:
+        filename = fname.iat[i]
+        
+        # Analyze scripts in filename
         scripts_found = detect_mixed_scripts(filename)
         
         if len(scripts_found) > 1:
@@ -84,23 +84,16 @@ def detect_visual_masquerading(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
                 script_details.append(f"{script}({char_sample})")
             
             reason = f"Mixed char detected: {', '.join(script_details)}"
-            return True, reason
-        
-        return False, ""
+            
+            # Create finding row (copy original row + add detection info)
+            row_out = df.loc[i].copy()
+            row_out["detection_reason"] = reason
+            row_out["detection_type"] = "Visual Masquerading"
+            
+            # Add script analysis details
+            row_out["scripts_found"] = str(scripts_found)
+            row_out["script_count"] = len(scripts_found)
+            
+            findings.append(row_out)
     
-    # Apply analysis to all filenames at once
-    results = fname.apply(analyze_filename)
-    
-    # Split results into mask and reasons
-    mask_list = []
-    reason_list = []
-    
-    for is_flagged, reason in results:
-        mask_list.append(is_flagged)
-        reason_list.append(reason)
-    
-    # Create pandas Series with proper index alignment
-    mask = pd.Series(mask_list, index=df.index)
-    reasons = pd.Series(reason_list, index=df.index)
-    
-    return mask, reasons
+    return pd.DataFrame(findings)
