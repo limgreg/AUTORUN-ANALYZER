@@ -1,5 +1,6 @@
 """
 Excel report generation for modular detection system.
+Updated to remove High Priority Combined tab.
 """
 
 import os
@@ -69,13 +70,14 @@ def write_modular_report(out_path: str,
                         baseline_csv: str = None):
     """
     Generate comprehensive Excel report for modular detection system.
+    REMOVED: High Priority Combined tab
     
     Args:
         out_path: Output Excel file path
         df_src: Source DataFrame
         results: Dictionary of detection results
         registry: DetectionRegistry instance
-        df_combined: Combined high-priority findings
+        df_combined: Combined high-priority findings (included in summary only)
         top_pct: PySAD percentage threshold
         pysad_method: PySAD method used
         baseline_csv: Baseline CSV path (for summary)
@@ -94,7 +96,7 @@ def write_modular_report(out_path: str,
     with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
         wb = writer.book
         
-        # 1. EXECUTIVE SUMMARY SHEET
+        # 1. EXECUTIVE SUMMARY SHEET (includes combined findings info)
         create_executive_summary(writer, wb, df_src, detection_counts, df_combined, 
                                top_pct, pysad_method, baseline_csv)
         
@@ -103,12 +105,7 @@ def write_modular_report(out_path: str,
         summary_df.to_excel(writer, sheet_name="Detection_Summary", index=False)
         autosize_worksheet(writer.sheets["Detection_Summary"], summary_df, wb)
         
-        # 3. COMBINED HIGH-PRIORITY FINDINGS
-        if len(df_combined) > 0:
-            df_combined.to_excel(writer, sheet_name="High_Priority_Combined", index=False)
-            autosize_worksheet(writer.sheets["High_Priority_Combined"], df_combined, wb)
-        
-        # 4. INDIVIDUAL DETECTION SHEETS
+        # 3. INDIVIDUAL DETECTION SHEETS (main findings)
         for detector_name, df_results in results.items():
             if isinstance(df_results, pd.DataFrame) and len(df_results) > 0:
                 # Clean sheet name (Excel limit: 31 chars, no special chars)
@@ -118,10 +115,10 @@ def write_modular_report(out_path: str,
                 df_results.to_excel(writer, sheet_name=sheet_name, index=False)
                 autosize_worksheet(writer.sheets[sheet_name], df_results, wb)
         
-        # 5. OVERLAP ANALYSIS
+        # 4. OVERLAP ANALYSIS
         create_overlap_analysis(writer, wb, df_src, results)
         
-        # 6. ALL ROWS (for reference)
+        # 5. ALL ROWS (for reference)
         df_src.to_excel(writer, sheet_name="All_Rows", index=False)
         autosize_worksheet(writer.sheets["All_Rows"], df_src, wb)
 
@@ -130,7 +127,7 @@ def write_modular_report(out_path: str,
 
 def create_executive_summary(writer, wb, df_src, detection_counts, df_combined, 
                            top_pct, pysad_method, baseline_csv):
-    """Create executive summary sheet with key metrics."""
+    """Create executive summary sheet with key metrics (includes combined findings stats)."""
     
     # Calculate key metrics
     total_rows = len(df_src)
@@ -156,8 +153,28 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
         percentage = (count / total_rows * 100) if total_rows > 0 else 0
         summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
     
+    # Add combined findings info in summary (without separate tab)
     summary_data.append(["", ""])
-    summary_data.append(["High-Priority Combined", f"{len(df_combined):,}"])
+    summary_data.append(["MULTI-DETECTION ANALYSIS", ""])
+    summary_data.append(["Items flagged by multiple detectors", f"{len(df_combined):,}"])
+    
+    if len(df_combined) > 0:
+        # Show top 3 multi-detection items in summary
+        summary_data.append(["", ""])
+        summary_data.append(["TOP MULTI-DETECTION FINDINGS", ""])
+        
+        for i, (idx, row) in enumerate(df_combined.head(3).iterrows()):
+            analysis_types = row.get('analysis_types', 'Unknown')
+            severity = row.get('max_severity', 'Unknown')
+            path = row.get('Image Path', row.get('Path', 'Unknown'))
+            priority = row.get('priority_score', 0)
+            
+            # Truncate path if too long for summary
+            if len(path) > 50:
+                path = path[:47] + "..."
+            
+            summary_data.append([f"#{i+1} [{severity}] {analysis_types}", f"Score: {priority}"])
+            summary_data.append([f"   Path", path])
     
     # Configuration
     summary_data.append(["", ""])
@@ -203,12 +220,13 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
     })
     
     # Apply formatting
-    ws.set_column('A:A', 25)
-    ws.set_column('B:B', 20)
+    ws.set_column('A:A', 30)
+    ws.set_column('B:B', 25)
     
-    # Color code risk levels
+    # Color code sections
     for i, (metric, value) in enumerate(summary_data):
-        if metric in ["SCAN OVERVIEW", "DETECTION RESULTS", "CONFIGURATION", "RISK ASSESSMENT"]:
+        if metric in ["SCAN OVERVIEW", "DETECTION RESULTS", "MULTI-DETECTION ANALYSIS", 
+                     "TOP MULTI-DETECTION FINDINGS", "CONFIGURATION", "RISK ASSESSMENT"]:
             ws.set_row(i + 1, None, section_fmt)
 
 
