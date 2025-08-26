@@ -54,19 +54,8 @@ def main(csv_path: str,
     
     # Initialize clean architecture detection
     try:
-        from .detectors import DetectionRegistry
-        
-        print(f"\n[+] Initializing Clean Architecture Detection...")
-        registry = DetectionRegistry()
-        
-        # Show the clean architecture
-        registry.print_architecture_overview()
-        
-        # Run all detections with intelligent configuration
-        results = registry.run_all(df, 
-                                  baseline_csv=baseline_csv,
-                                  pysad_method=pysad_method,
-                                  top_pct=top_pct)
+        from .detectors import run_autoruns_analysis
+        results, registry, df_combined = run_autoruns_analysis(df, baseline_csv, pysad_method, top_pct)
         
         # Create combined analysis
         print(f"\n[+] Creating combined analysis...")
