@@ -1,6 +1,6 @@
 """
 Updated core/pysad.py that works with the new modular system.
-This fixes the import error after deleting unsigned.py
+REMOVED: Combined scoring system - just use pure PySAD scores and flagged_by info
 """
 
 import re
@@ -103,7 +103,7 @@ def build_features_for_pysad(df: pd.DataFrame) -> pd.DataFrame:
 def build_meta_features_for_pysad(df: pd.DataFrame, detection_results: dict = None) -> pd.DataFrame:
     """
     Build enhanced feature matrix that includes results from modular detectors.
-    This is for the meta-detection system we discussed.
+    SIMPLIFIED: Just original features + binary detection flags (no complex scoring)
     
     Args:
         df: Input DataFrame
@@ -125,23 +125,11 @@ def build_meta_features_for_pysad(df: pd.DataFrame, detection_results: dict = No
                 if len(result_df) > 0:
                     original_features.loc[result_df.index, feature_name] = 1
         
-        # Add meta-features
+        # Simple meta-features
         detection_columns = [col for col in original_features.columns if col.startswith('flagged_by_')]
         if detection_columns:
             # Total detection count
             original_features['total_detections'] = original_features[detection_columns].sum(axis=1)
-            
-            # High priority detections (visual masquerading, unsigned)
-            high_priority_cols = [col for col in detection_columns 
-                                if 'visual_masquerading' in col or 'unsigned_binaries' in col]
-            if high_priority_cols:
-                original_features['high_priority_detections'] = original_features[high_priority_cols].sum(axis=1)
-            
-            # Medium priority detections (suspicious paths, hidden chars)
-            medium_priority_cols = [col for col in detection_columns 
-                                  if 'suspicious_paths' in col or 'hidden_characters' in col]
-            if medium_priority_cols:
-                original_features['medium_priority_detections'] = original_features[medium_priority_cols].sum(axis=1)
     
     return original_features
 
@@ -212,7 +200,7 @@ def run_meta_pysad_analysis(df: pd.DataFrame, detection_results: dict,
                            method: str = "hst", top_pct: float = 3.0) -> tuple:
     """
     Run meta-PySAD analysis using detection results as features.
-    This implements your idea of feeding detector results into PySAD.
+    SIMPLIFIED: Removed complex combined scoring - just use pure PySAD + flagged_by info
     
     Args:
         df: Original DataFrame
@@ -238,7 +226,7 @@ def run_meta_pysad_analysis(df: pd.DataFrame, detection_results: dict,
     df_meta = df.copy()
     df_meta['meta_pysad_score'] = np.round(meta_scores, 4)
     
-    # Add detection summary
+    # Add detection summary (simplified)
     flagged_by = []
     detection_counts = []
     
@@ -256,17 +244,17 @@ def run_meta_pysad_analysis(df: pd.DataFrame, detection_results: dict,
     df_meta['flagged_by_detectors'] = flagged_by
     df_meta['detection_count'] = detection_counts
     
-    # Calculate combined risk score (meta score weighted by detection count)
-    df_meta['combined_risk_score'] = df_meta['meta_pysad_score'] * (1 + df_meta['detection_count'] * 0.2)
+    # SIMPLIFIED: Just use pure PySAD score for ranking (no complex combined scoring)
+    # Users can see which detectors flagged items in the 'flagged_by_detectors' column
     
-    # Get top percentile
+    # Get top percentile based on pure PySAD score
     k = max(1, int(math.ceil(len(df_meta) * (top_pct / 100.0))))
-    thresh = np.partition(df_meta['combined_risk_score'].values, -k)[-k]
+    thresh = np.partition(df_meta['meta_pysad_score'].values, -k)[-k]
     
-    df_meta_top = df_meta[df_meta['combined_risk_score'] >= thresh].copy()
-    df_meta_top = df_meta_top.sort_values('combined_risk_score', ascending=False)
+    df_meta_top = df_meta[df_meta['meta_pysad_score'] >= thresh].copy()
+    df_meta_top = df_meta_top.sort_values('meta_pysad_score', ascending=False)
     
-    print(f"    Meta-analysis complete: {len(df_meta_top)} top anomalies")
+    print(f"    Meta-analysis complete: {len(df_meta_top)} top anomalies (pure PySAD scoring)")
     
     return df_meta_top, df_meta
 
