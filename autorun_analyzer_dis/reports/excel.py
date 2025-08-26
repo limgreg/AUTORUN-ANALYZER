@@ -105,20 +105,45 @@ def write_modular_report(out_path: str,
         summary_df.to_excel(writer, sheet_name="Detection_Summary", index=False)
         autosize_worksheet(writer.sheets["Detection_Summary"], summary_df, wb)
         
-        # 3. INDIVIDUAL DETECTION SHEETS (main findings)
-        for detector_name, df_results in results.items():
-            if isinstance(df_results, pd.DataFrame) and len(df_results) > 0:
-                # Clean sheet name (Excel limit: 31 chars, no special chars)
-                sheet_name = detector_name.replace('_', ' ').title()
-                sheet_name = sheet_name[:31]  # Excel sheet name limit
-                
-                df_results.to_excel(writer, sheet_name=sheet_name, index=False)
-                autosize_worksheet(writer.sheets[sheet_name], df_results, wb)
-        
-        # 4. OVERLAP ANALYSIS
+        # 3. OVERLAP ANALYSIS
         create_overlap_analysis(writer, wb, df_src, results)
         
-        # 5. ALL ROWS (for reference)
+        # 4. META PYSAD (if available)
+        if 'meta_pysad' in results and isinstance(results['meta_pysad'], pd.DataFrame) and len(results['meta_pysad']) > 0:
+            results['meta_pysad'].to_excel(writer, sheet_name="Meta_PySAD", index=False)
+            autosize_worksheet(writer.sheets["Meta_PySAD"], results['meta_pysad'], wb)
+        
+        # 5. INDIVIDUAL DETECTION SHEETS (in specific order)
+        detector_order = [
+            'unsigned_binaries',
+            'suspicious_paths', 
+            'baseline_comparison',
+            'visual_masquerading',
+            'hidden_characters',
+            'anomaly_detection'
+        ]
+        
+        for detector_name in detector_order:
+            if detector_name in results:
+                df_results = results[detector_name]
+                if isinstance(df_results, pd.DataFrame) and len(df_results) > 0:
+                    # Clean sheet name mapping
+                    sheet_name_map = {
+                        'unsigned_binaries': 'Unsigned_Binaries',
+                        'suspicious_paths': 'Suspicious_Paths',
+                        'baseline_comparison': 'Baseline_Comparison', 
+                        'visual_masquerading': 'Visual_Masquerading',
+                        'hidden_characters': 'Hidden_Characters',
+                        'anomaly_detection': 'Anomaly_Detection'
+                    }
+                    
+                    sheet_name = sheet_name_map.get(detector_name, detector_name.replace('_', ' ').title())
+                    sheet_name = sheet_name[:31]  # Excel sheet name limit
+                    
+                    df_results.to_excel(writer, sheet_name=sheet_name, index=False)
+                    autosize_worksheet(writer.sheets[sheet_name], df_results, wb)
+        
+        # 6. ALL ROWS (for reference)
         df_src.to_excel(writer, sheet_name="All_Rows", index=False)
         autosize_worksheet(writer.sheets["All_Rows"], df_src, wb)
 
@@ -146,12 +171,41 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
     summary_data.append(["Scan timestamp", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     summary_data.append(["", ""])
     
-    # Detection results
+    # Detection results (in specific order)
     summary_data.append(["DETECTION RESULTS", ""])
+    
+    # Ordered detection results
+    detector_order = [
+        'unsigned_binaries',
+        'suspicious_paths',
+        'baseline_comparison', 
+        'visual_masquerading',
+        'hidden_characters',
+        'anomaly_detection'
+    ]
+    
+    display_names = {
+        'unsigned_binaries': 'Unsigned Binaries',
+        'suspicious_paths': 'Suspicious Paths',
+        'baseline_comparison': 'Baseline Comparison',
+        'visual_masquerading': 'Visual Masquerading', 
+        'hidden_characters': 'Hidden Characters',
+        'anomaly_detection': 'Anomaly Detection'
+    }
+    
+    for detector_name in detector_order:
+        if detector_name in detection_counts:
+            count = detection_counts[detector_name]
+            display_name = display_names.get(detector_name, detector_name.replace('_', ' ').title())
+            percentage = (count / total_rows * 100) if total_rows > 0 else 0
+            summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
+    
+    # Add any other detectors not in the main order (like meta_pysad)
     for detector_name, count in detection_counts.items():
-        display_name = detector_name.replace('_', ' ').title()
-        percentage = (count / total_rows * 100) if total_rows > 0 else 0
-        summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
+        if detector_name not in detector_order:
+            display_name = detector_name.replace('_', ' ').title()
+            percentage = (count / total_rows * 100) if total_rows > 0 else 0
+            summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
     
     # Add combined findings info in summary (without separate tab)
     summary_data.append(["", ""])
@@ -301,17 +355,40 @@ def write_report(out_path: str, df_src: pd.DataFrame, df_all: pd.DataFrame,
     if df_pysad_top is not None and len(df_pysad_top) > 0:
         results['anomaly_detection'] = df_pysad_top
     
-    # Create a minimal registry for the summary
+    # Create a minimal registry for the summary (with ordered results)
     class LegacyRegistry:
         def get_summary(self):
             summary = []
-            for name, df_result in results.items():
-                summary.append({
-                    'Detector': name.replace('_', ' ').title(),
-                    'Description': 'Legacy detection method',
-                    'Findings': len(df_result),
-                    'Enabled': True
-                })
+            
+            # Ordered detection results
+            detector_order = [
+                'unsigned_binaries',
+                'suspicious_paths', 
+                'baseline_comparison',
+                'visual_masquerading',
+                'hidden_characters',
+                'anomaly_detection'
+            ]
+            
+            display_names = {
+                'unsigned_binaries': 'Unsigned Binaries',
+                'suspicious_paths': 'Suspicious Paths',
+                'baseline_comparison': 'Baseline Comparison',
+                'visual_masquerading': 'Visual Masquerading',
+                'hidden_characters': 'Hidden Characters', 
+                'anomaly_detection': 'Anomaly Detection'
+            }
+            
+            for detector_name in detector_order:
+                if detector_name in results:
+                    df_result = results[detector_name]
+                    summary.append({
+                        'Detector': display_names.get(detector_name, detector_name.replace('_', ' ').title()),
+                        'Description': 'Legacy detection method',
+                        'Findings': len(df_result),
+                        'Enabled': True
+                    })
+            
             return pd.DataFrame(summary)
     
     registry = LegacyRegistry()
