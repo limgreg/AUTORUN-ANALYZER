@@ -1,10 +1,10 @@
-# 🔍 Autoruns Analyzer User Guide
+#  Autoruns Analyzer User Guide
 
 ## Quick Start
 
 The Autoruns Analyzer is a clean architecture detection system that analyzes Windows Autoruns data for security threats and anomalies.
 
-### 📁 Folder Structure Setup
+###  Folder Structure Setup
 
 Before running, organize your files in these folders:
 
@@ -21,7 +21,7 @@ SIT-DIS-VA/
 └── run_analyzer.py         # Main runner script
 ```
 
-### 🚀 Basic Usage
+###  Basic Usage
 
 1. **Install dependencies:**
    ```bash
@@ -41,11 +41,11 @@ SIT-DIS-VA/
 
 ---
 
-## 📊 Analysis Components
+##  Analysis Components
 
 The analyzer uses a **Clean Architecture** approach with single-responsibility modules:
 
-### 🏗️ Detection Modules
+###  Detection Modules
 
 | Module | Responsibility | What it Detects |
 |--------|---------------|-----------------|
@@ -56,10 +56,10 @@ The analyzer uses a **Clean Architecture** approach with single-responsibility m
 | **Integrity Analysis** | File verification | Hash mismatches vs baseline (baseline required) |
 | **Meta-Statistical** | Anomaly detection | PySAD statistical analysis |
 
-### 🔒 Ultra-Strict Signature Policy
+###  Ultra-Strict Signature Policy
 
 **ONLY TRUSTED:**
-- `✓ (Verified) Microsoft Windows`
+- ` (Verified) Microsoft Windows`
 
 **FLAGGED AS SUSPICIOUS:**
 - Missing signatures
@@ -70,37 +70,37 @@ The analyzer uses a **Clean Architecture** approach with single-responsibility m
 
 ---
 
-## 🎛️ Interactive Usage Guide
+##  Interactive Usage Guide
 
 ### Step 1: CSV File Selection
 
 **For small collections (≤10 files):**
 ```
-🔍 Select Autoruns CSV file:
-📁 Directory: csv/
+ Select Autoruns CSV file:
+ Directory: csv/
 
-📋 Available CSV files:
+ Available CSV files:
 #   Filename                    Size    Modified
 --- ---------------------------------- -------- ------------
 1   rd03.shieldbase.com         2.1MB    12/15/2024
 2   server02.domain.com         1.8MB    12/14/2024
 
-📌 Select file (1-2): 1
+ Select file (1-2): 1
 ```
 
 **For large collections (>10 files):**
 ```
-🔍 Found 47 CSV file(s)
-🔍 Search interface (type to filter, Enter to see all)
+ Found 47 CSV file(s)
+ Search interface (type to filter, Enter to see all)
 Search: shieldbase
 
-📋 CSV files matching 'shieldbase' (3 found):
+ CSV files matching 'shieldbase' (3 found):
 #   Filename                    Size    Modified  
 --- ---------------------------------- -------- ------------
 1   rd03.shieldbase.com         2.1MB    12/15/2024
 2   rd02.shieldbase.com         2.0MB    12/14/2024
 
-📌 Select file (1-2, s to search again): 1
+ Select file (1-2, s to search again): 1
 ```
 
 ### Step 2: Baseline Selection (Optional)
@@ -108,60 +108,60 @@ Search: shieldbase
 Baseline files are organized in subfolders by Windows version:
 
 ```
-📋 Select baseline CSV file (optional):
-📁 Directory: baseline/ (searching subfolders for CSV files only)
+ Select baseline CSV file (optional):
+ Directory: baseline/ (searching subfolders for CSV files only)
 
-🔍 Found 12 CSV files in baseline subfolders
-📋 (Automatically ignoring README.md and .txt files)
+ Found 12 CSV files in baseline subfolders
+ (Automatically ignoring README.md and .txt files)
 
 Search interface (type Windows version, build, or filename)
-💡 Examples: 'W10', '22H2', 'Pro_9600', 'Windows11'
+ Examples: 'W10', '22H2', 'Pro_9600', 'Windows11'
 Search: W8.1
 
-📋 CSV files matching 'W8.1' (2 found):
+ CSV files matching 'W8.1' (2 found):
 #   Folder/Filename                           Size    Date
 --- --------------------------------------------- -------- ----------
 1   W8.1_Pro_9600/W8.1_Pro_9600               1.8MB    12/15/24
 2   Windows8/W8.1_Enterprise_Build9600        2.1MB    12/14/24
 
-📌 Select file (1-2): 1
-✅ Selected: W8.1_Pro_9600/W8.1_Pro_9600.csv
+ Select file (1-2): 1
+ Selected: W8.1_Pro_9600/W8.1_Pro_9600.csv
 ```
 
 ### Step 3: Output Configuration
 
 ```
-📊 Output filename (without .xlsx extension)
-💡 Suggestion: autoruns_analysis_20241215_143022
+ Output filename (without .xlsx extension)
+ Suggestion: autoruns_analysis_20241215_143022
 Enter filename (or press Enter for suggestion): my_security_scan
-✅ Output: output/my_security_scan.xlsx
+ Output: output/my_security_scan.xlsx
 ```
 
 ### Step 4: Analysis Parameters
 
 ```
-🎛️  ANALYSIS PARAMETERS
-🔍 PySAD Method (hst/loda, default: hst): [Enter for default]
-📊 Top percentage (default: 3.0): 5.0
-✅ Configuration: HST method, top 5.0%
+  ANALYSIS PARAMETERS
+ PySAD Method (hst/loda, default: hst): [Enter for default]
+ Top percentage (default: 3.0): 5.0
+ Configuration: HST method, top 5.0%
 ```
 
 ### Step 5: Final Confirmation
 
 ```
-🚀 READY TO ANALYZE
-📁 CSV:          rd03.shieldbase.com.csv
-📋 Baseline:     W8.1_Pro_9600/W8.1_Pro_9600.csv
-📊 Output:       my_security_scan.xlsx
-🎯 Method:       HST
-📈 Percentage:   5.0%
+ READY TO ANALYZE
+ CSV:          rd03.shieldbase.com.csv
+ Baseline:     W8.1_Pro_9600/W8.1_Pro_9600.csv
+ Output:       my_security_scan.xlsx
+ Method:       HST
+ Percentage:   5.0%
 
-▶️  Start analysis? (Y/n): y
+ Start analysis? (Y/n): y
 ```
 
 ---
 
-## 📊 Understanding the Results
+##  Understanding the Results
 
 ### Excel Report Structure
 
@@ -203,7 +203,7 @@ The generated Excel report contains these tabs (in order):
 
 ---
 
-## 🎯 Best Practices
+##  Best Practices
 
 ### File Organization
 
@@ -227,7 +227,7 @@ The generated Excel report contains these tabs (in order):
 
 ---
 
-## 🛠️ Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -254,7 +254,7 @@ The generated Excel report contains these tabs (in order):
 
 ---
 
-## 🔧 Advanced Configuration
+##  Advanced Configuration
 
 ### PySAD Methods
 
@@ -270,7 +270,7 @@ python -m autorun_analyzer_dis.main input.csv output.xlsx 3.0 baseline.csv hst
 
 ---
 
-## 🆘 Support
+##  Support
 
 ### Getting Help
 
@@ -293,7 +293,7 @@ python -m autorun_analyzer_dis.main input.csv output.xlsx 3.0 baseline.csv hst
 
 ---
 
-## 🔄 Updates and Maintenance
+##  Updates and Maintenance
 
 ### Keeping Baselines Current
 

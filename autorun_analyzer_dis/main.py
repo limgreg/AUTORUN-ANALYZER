@@ -78,8 +78,8 @@ def main(csv_path: str,
         write_modular_report(out_xlsx, df, results, registry, df_combined, 
                            top_pct, pysad_method, baseline_csv)
         
-        # Print clean analysis summary
-        print_clean_architecture_summary(df, results, df_combined, registry, out_xlsx)
+        # Print simple completion message
+        print(f"[+] Analysis complete. Report saved: {out_xlsx}")
         
     except ImportError as e:
         print(f"[!] Clean architecture import failed: {e}")
@@ -89,78 +89,6 @@ def main(csv_path: str,
         import traceback
         traceback.print_exc()
         run_fallback_analysis(df, out_xlsx, top_pct, pysad_method)
-
-
-def print_clean_architecture_summary(df, results, df_combined, registry, out_xlsx):
-    """Print summary showing clean architecture in action."""
-    print(f"\n{'='*70}")
-    print(f"CLEAN ARCHITECTURE ANALYSIS RESULTS")
-    print(f"{'='*70}")
-    
-    print(f"📊 Total entries analyzed: {len(df):,}")
-    
-    # Show results by responsibility
-    print(f"\n🔍 Detection Results by Analysis Type:")
-    
-    responsibilities = {}
-    for name, detector in registry.detectors.items():
-        if detector['enabled'] and name in results:
-            resp = detector['responsibility']
-            if resp not in responsibilities:
-                responsibilities[resp] = []
-            count = len(results[name]) if isinstance(results[name], pd.DataFrame) else 0
-            responsibilities[resp].append((name, count))
-    
-    total_findings = 0
-    for resp, detectors in responsibilities.items():
-        print(f"\n   {resp}:")
-        for name, count in detectors:
-            detector_display = name.replace('_', ' ').title()
-            enhanced_note = ""
-            detector_info = registry.detectors[name]
-            if detector_info['requires_baseline']:
-                enhanced_note = " (baseline-required)"
-            elif detector_info['enhanced_by_baseline']:
-                enhanced_note = " (baseline-enhanced)"
-            
-            print(f"      {detector_display}: {count:,} findings{enhanced_note}")
-            total_findings += count
-    
-    # Combined analysis results
-    if len(df_combined) > 0:
-        print(f"\n🎯 Combined High-Priority Analysis:")
-        print(f"   Items flagged by multiple analysis types: {len(df_combined):,}")
-        
-        # Show top findings by analysis type combination
-        if len(df_combined) > 0:
-            print(f"\n   Top Combined Findings:")
-            for i, (idx, row) in enumerate(df_combined.head(3).iterrows()):
-                analysis_types = row.get('analysis_types', 'Unknown')
-                severity = row.get('max_severity', 'Unknown')
-                path = row.get('Image Path', row.get('Path', 'Unknown'))
-                priority = row.get('priority_score', 0)
-                
-                print(f"   {i+1}. [{severity}] {analysis_types} (score: {priority})")
-                print(f"      → {path}")
-    
-    # Architecture benefits
-    print(f"\n✨ Clean Architecture Benefits:")
-    print(f"   🏗️  Single Responsibility: Each module has ONE focused job")
-    print(f"   🔧 No Overlap: Path analysis ≠ Integrity checking ≠ Character analysis")
-    print(f"   🧠 Smart Configuration: Automatic baseline enhancement")
-    print(f"   📊 Meta-Analysis: PySAD combines all signals intelligently")
-    
-    # Efficiency metrics
-    unique_flagged = len(set().union(*[set(df.index) for df in results.values() 
-                                     if isinstance(df, pd.DataFrame) and len(df) > 0]))
-    
-    print(f"\n📈 Analysis Efficiency:")
-    print(f"   Unique entries flagged: {unique_flagged:,}/{len(df):,} ({unique_flagged/len(df)*100:.1f}%)")
-    print(f"   Total analysis signals: {total_findings:,}")
-    print(f"   Signal-to-noise ratio: {unique_flagged/total_findings:.2f}" if total_findings > 0 else "   Signal-to-noise ratio: N/A")
-    
-    print(f"\n📄 Report: {out_xlsx}")
-    print(f"{'='*70}")
 
 
 def run_fallback_analysis(df, out_xlsx, top_pct, pysad_method):
@@ -245,12 +173,12 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python -m autorun_analyzer_dis <autoruns.csv> [out.xlsx] [top_pct] [baseline.csv] [pysad_method]")
         print("\nClean Architecture Autoruns Analyzer:")
-        print("  🔍 Character Analysis: Visual masquerading, hidden characters")
-        print("  📝 Signature Analysis: Digital signature verification")
-        print("  📂 Location Analysis: Suspicious path intelligence") 
-        print("  🔒 Integrity Analysis: File hash verification")
-        print("  📊 Meta-Statistical Analysis: PySAD anomaly detection")
-        print("\n✨ Each module has a single, focused responsibility!")
+        print("  Character Analysis: Visual masquerading, hidden characters")
+        print("  Signature Analysis: Digital signature verification")
+        print("  Location Analysis: Suspicious path intelligence") 
+        print("  Integrity Analysis: File hash verification")
+        print("  Meta-Statistical Analysis: PySAD anomaly detection")
+        print("\nEach module has a single, focused responsibility!")
         sys.exit(1)
     
     csv_path = sys.argv[1]

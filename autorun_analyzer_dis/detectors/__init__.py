@@ -30,8 +30,8 @@ def run_all_detections(df: pd.DataFrame, baseline_csv: str = None,
     Returns:
         tuple: (results_dict, summary_info)
     """
-    print(f"\n🔍 Starting Security Analysis")
-    print(f"📊 Analyzing {len(df):,} autorun entries...")
+    print(f"\n[SCAN] Starting Security Analysis")
+    print(f"[INFO] Analyzing {len(df):,} autorun entries...")
     print("=" * 50)
     
     results = {}
@@ -43,92 +43,92 @@ def run_all_detections(df: pd.DataFrame, baseline_csv: str = None,
     }
     
     # 1. Character Analysis - Visual Masquerading
-    print("🔤 Character Analysis: Visual masquerading detection")
+    print("[CHAR] Character Analysis: Visual masquerading detection")
     try:
         results['visual_masquerading'] = detect_visual_masquerading(df)
         count = len(results['visual_masquerading'])
-        print(f"   ✅ Complete: {count:,} suspicious character patterns found")
+        print(f"   [OK] Complete: {count:,} suspicious character patterns found")
         summary_info['detectors_run'] += 1
         summary_info['findings_summary']['visual_masquerading'] = count
     except Exception as e:
-        print(f"   ❌ Failed: {e}")
+        print(f"   [ERROR] Failed: {e}")
         results['visual_masquerading'] = pd.DataFrame()
         summary_info['findings_summary']['visual_masquerading'] = 0
     
     # 2. Signature Analysis - Unsigned Binaries  
-    print("\n🔏 Signature Analysis: Digital signature verification")
+    print("\n[SIG] Signature Analysis: Digital signature verification")
     try:
         results['unsigned_binaries'] = detect_unsigned_binaries(df)
         count = len(results['unsigned_binaries'])
-        print(f"   ✅ Complete: {count:,} unsigned/suspicious signatures found")
+        print(f"   [OK] Complete: {count:,} unsigned/suspicious signatures found")
         summary_info['detectors_run'] += 1
         summary_info['findings_summary']['unsigned_binaries'] = count
     except Exception as e:
-        print(f"   ❌ Failed: {e}")
+        print(f"   [ERROR] Failed: {e}")
         results['unsigned_binaries'] = pd.DataFrame()
         summary_info['findings_summary']['unsigned_binaries'] = 0
     
     # 3. Location Analysis - Suspicious Paths
-    print("\n📂 Location Analysis: Suspicious path detection")
+    print("\n[PATH] Location Analysis: Suspicious path detection")
     try:
         results['suspicious_paths'] = detect_suspicious_paths(df, baseline_csv)
         count = len(results['suspicious_paths'])
         mode = "baseline-driven" if baseline_csv else "pattern-based"
-        print(f"   ✅ Complete: {count:,} suspicious paths found ({mode})")
+        print(f"   [OK] Complete: {count:,} suspicious paths found ({mode})")
         summary_info['detectors_run'] += 1
         summary_info['findings_summary']['suspicious_paths'] = count
     except Exception as e:
-        print(f"   ❌ Failed: {e}")
+        print(f"   [ERROR] Failed: {e}")
         results['suspicious_paths'] = pd.DataFrame()
         summary_info['findings_summary']['suspicious_paths'] = 0
     
     # 4. Character Encoding Analysis - Hidden Characters
-    print("\n👻 Character Encoding: Hidden character detection")
+    print("\n[HIDE] Character Encoding: Hidden character detection")
     try:
         results['hidden_characters'] = detect_hidden_characters(df)
         count = len(results['hidden_characters'])
-        print(f"   ✅ Complete: {count:,} hidden character issues found")
+        print(f"   [OK] Complete: {count:,} hidden character issues found")
         summary_info['detectors_run'] += 1
         summary_info['findings_summary']['hidden_characters'] = count
     except Exception as e:
-        print(f"   ❌ Failed: {e}")
+        print(f"   [ERROR] Failed: {e}")
         results['hidden_characters'] = pd.DataFrame()
         summary_info['findings_summary']['hidden_characters'] = 0
     
     # 5. Integrity Analysis - Baseline Comparison (only if baseline provided)
-    print("\n🔒 Integrity Analysis: File hash verification")
+    print("\n[HASH] Integrity Analysis: File hash verification")
     if baseline_csv:
         try:
             results['baseline_comparison'] = detect_baseline_deviations(df, baseline_csv)
             count = len(results['baseline_comparison'])
-            print(f"   ✅ Complete: {count:,} integrity violations found")
+            print(f"   [OK] Complete: {count:,} integrity violations found")
             summary_info['detectors_run'] += 1
             summary_info['findings_summary']['baseline_comparison'] = count
         except Exception as e:
-            print(f"   ❌ Failed: {e}")
+            print(f"   [ERROR] Failed: {e}")
             results['baseline_comparison'] = pd.DataFrame()
             summary_info['findings_summary']['baseline_comparison'] = 0
     else:
-        print(f"   ⚠️  Skipped: No baseline provided (hash-based verification disabled)")
+        print(f"   [SKIP] Skipped: No baseline provided (hash-based verification disabled)")
         results['baseline_comparison'] = pd.DataFrame()
         summary_info['findings_summary']['baseline_comparison'] = 0
     
     # 6. Meta-Statistical Analysis - Anomaly Detection
-    print(f"\n📈 Meta-Statistical: Anomaly detection ({pysad_method.upper()}, top {top_pct}%)")
+    print(f"\n[STAT] Meta-Statistical: Anomaly detection ({pysad_method.upper()}, top {top_pct}%)")
     try:
         results['anomaly_detection'] = detect_anomalies_pysad(df, pysad_method, top_pct)
         count = len(results['anomaly_detection'])
-        print(f"   ✅ Complete: {count:,} statistical anomalies found")
+        print(f"   [OK] Complete: {count:,} statistical anomalies found")
         summary_info['detectors_run'] += 1
         summary_info['findings_summary']['anomaly_detection'] = count
     except Exception as e:
-        print(f"   ❌ Failed: {e}")
+        print(f"   [ERROR] Failed: {e}")
         results['anomaly_detection'] = pd.DataFrame()
         summary_info['findings_summary']['anomaly_detection'] = 0
     
     # Generate summary
     print("\n" + "=" * 50)
-    print("📊 ANALYSIS COMPLETE")
+    print("[SUMMARY] ANALYSIS COMPLETE")
     print("=" * 50)
     
     total_findings = sum(summary_info['findings_summary'].values())
@@ -137,14 +137,14 @@ def run_all_detections(df: pd.DataFrame, baseline_csv: str = None,
         if isinstance(df_result, pd.DataFrame) and len(df_result) > 0
     ]))
     
-    print(f"🎯 Results Summary:")
+    print(f"[RESULTS] Results Summary:")
     print(f"   Detectors run: {summary_info['detectors_run']}/6")
     print(f"   Total findings: {total_findings:,}")
     print(f"   Unique flagged entries: {unique_flagged:,}/{len(df):,} ({unique_flagged/len(df)*100:.1f}%)")
     if baseline_csv:
         print(f"   Baseline: {baseline_csv.split('/')[-1] if '/' in baseline_csv else baseline_csv}")
     
-    print(f"\n📋 Findings by Type:")
+    print(f"\n[DETAIL] Findings by Type:")
     detector_names = {
         'visual_masquerading': 'Visual Masquerading',
         'unsigned_binaries': 'Unsigned Binaries', 

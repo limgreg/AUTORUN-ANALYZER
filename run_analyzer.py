@@ -32,85 +32,6 @@ def get_file_info(file_path: Path) -> dict:
 def search_files(directory: str, extension: str = ".csv", query: str = "") -> list:
     """
     Search files in directory with CSV-only filtering and subfolder support.
-    For baseline directory, recursively searches subfolders and ignores non-CSV files.
-    """
-    dir_path = Path(directory)
-    if not dir_path.exists():
-        return []
-    
-    files = []
-    
-    if directory == "baseline":
-        # For baseline: Search recursively and show folder structure
-        for file_path in dir_path.rglob(f"*{extension}"):  # Recursive search
-            if file_path.is_file():
-                file_info = get_file_info(file_path)
-                # Add folder context for baseline files
-                relative_path = file_path.relative_to(dir_path)
-                folder_context = str(relative_path.parent) if relative_path.parent != Path('.') else ""
-                file_info['folder'] = folder_context
-                file_info['full_name'] = str(relative_path.with_suffix(''))  # Without extension
-                
-                # Filter by query if provided (search in both filename and folder)
-                search_text = f"{file_info['name']} {folder_context}".lower()
-                if not query or query.lower() in search_text:
-                    files.append(file_info)
-    else:
-        # For csv directory: Simple flat search
-        for file_path in dir_path.glob(f"*{extension}"):
-            if file_path.is_file():
-                file_info = get_file_info(file_path)
-                # Filter by query if provided
-                if not query or query.lower() in file_info['name'].lower():
-                    files.append(file_info)
-    
-    # Sort by modification time (newest first)
-    return sorted(files, key=lambda x: x['modified'], reverse=True)
-
-
-def display_files(files: list, max_display: int = 15, is_baseline: bool = False) -> None:
-    """Display files with metadata, special formatting for baseline files."""
-    if not files:
-        print("   (No CSV files found)")
-        return
-    
-    if is_baseline:
-        # Special format for baseline files with folder context
-        print(f"   {'#':<3} {'Folder/Filename':<45} {'Size':<8} {'Date':<10}")
-        print(f"   {'-'*3} {'-'*45} {'-'*8} {'-'*10}")
-        
-        for i, file_info in enumerate(files[:max_display], 1):
-            if file_info.get('folder'):
-                display_name = f"{file_info['folder']}/{file_info['name']}"
-            else:
-                display_name = file_info['name']
-            
-            # Truncate long names
-            display_name = display_name[:44] + "…" if len(display_name) > 45 else display_name
-            size_str = f"{file_info['size_mb']}MB"
-            date_str = file_info['modified'].strftime('%m/%d/%y')
-            
-            print(f"   {i:<3} {display_name:<45} {size_str:<8} {date_str:<10}")
-    else:
-        # Standard format for CSV files
-        print(f"   {'#':<3} {'Filename':<40} {'Size':<8} {'Modified':<12}")
-        print(f"   {'-'*3} {'-'*40} {'-'*8} {'-'*12}")
-        
-        for i, file_info in enumerate(files[:max_display], 1):
-            name = file_info['name'][:39] + "…" if len(file_info['name']) > 40 else file_info['name']
-            size_str = f"{file_info['size_mb']}MB"
-            date_str = file_info['modified'].strftime('%m/%d/%Y')
-            
-            print(f"   {i:<3} {name:<40} {size_str:<8} {date_str:<12}")
-    
-    if len(files) > max_display:
-        print(f"   ... and {len(files) - max_display} more CSV files")
-        print(f"   💡 Use search to filter, or type 'all' to see everything")
-
-
-def search_files(directory: str, extension: str = ".csv", query: str = "") -> list:
-    """
-    Search files in directory with CSV-only filtering and subfolder support.
     Enhanced search that matches full paths, filenames, and folder names.
     """
     dir_path = Path(directory)
@@ -210,7 +131,7 @@ def display_files_paginated(files: list, page: int = 1, per_page: int = 15, is_b
             print(f"   {i:<3} {name:<40} {size_str:<8} {date_str:<12}")
     
     # Show pagination info
-    print(f"\n   📄 Page {page} of {total_pages} | Showing {len(displayed_files)} of {len(files)} files")
+    print(f"\n   Page {page} of {total_pages} | Showing {len(displayed_files)} of {len(files)} files")
     
     # Show navigation options
     nav_options = []
@@ -221,7 +142,7 @@ def display_files_paginated(files: list, page: int = 1, per_page: int = 15, is_b
     nav_options.append("'s' to search")
     
     if nav_options:
-        print(f"   💡 Navigation: {', '.join(nav_options)}")
+        print(f"   Navigation: {', '.join(nav_options)}")
     
     return displayed_files, total_pages, page
 
@@ -237,9 +158,9 @@ def select_file_hybrid(directory: str, prompt: str, extension: str = ".csv", req
     
     print(f"\n{prompt}")
     if is_baseline:
-        print(f"📁 Directory: {directory}/ (searching subfolders for CSV files only)")
+        print(f"Directory: {directory}/ (searching subfolders for CSV files only)")
     else:
-        print(f"📁 Directory: {directory}/")
+        print(f"Directory: {directory}/")
     
     while True:
         try:
@@ -253,9 +174,9 @@ def select_file_hybrid(directory: str, prompt: str, extension: str = ".csv", req
             
             if not all_files:
                 if required:
-                    print(f"❌ No CSV files found{search_display} in {directory}/ directory!")
+                    print(f"No CSV files found{search_display} in {directory}/ directory!")
                     if current_search:
-                        print("💡 Try a different search term, or press 's' to search again")
+                        print("Try a different search term, or press 's' to search again")
                         choice = input("Search again or quit (s/q): ").strip().lower()
                         if choice == 's':
                             current_search = ""
@@ -266,25 +187,25 @@ def select_file_hybrid(directory: str, prompt: str, extension: str = ".csv", req
                         continue
                     else:
                         if is_baseline:
-                            print(f"💡 Place your baseline CSV files in {directory}/ subfolders")
+                            print(f"Place your baseline CSV files in {directory}/ subfolders")
                         else:
-                            print(f"💡 Place your CSV files in the {directory}/ folder")
+                            print(f"Place your CSV files in the {directory}/ folder")
                         return None
                 else:
                     if is_baseline:
-                        print(f"⚠️  No CSV files found{search_display} in {directory}/")
+                        print(f"No CSV files found{search_display} in {directory}/")
                     else:
-                        print(f"⚠️  No CSV files found{search_display} in {directory}/")
+                        print(f"No CSV files found{search_display} in {directory}/")
                     return ""
             
             csv_count = len(all_files)
             if is_baseline:
-                print(f"\n🔍 Found {csv_count} CSV file(s){search_display} in baseline subfolders")
+                print(f"\nFound {csv_count} CSV file(s){search_display} in baseline subfolders")
             else:
-                print(f"\n🔍 Found {csv_count} CSV file(s){search_display}")
+                print(f"\nFound {csv_count} CSV file(s){search_display}")
             
             # Always use pagination for consistency
-            print(f"📋 Available CSV files{search_display}:")
+            print(f"Available CSV files{search_display}:")
             displayed_files, total_pages, current_page = display_files_paginated(
                 all_files, current_page, per_page, is_baseline
             )
@@ -305,7 +226,7 @@ def select_file_hybrid(directory: str, prompt: str, extension: str = ".csv", req
                 prompt_options.append("'n' for next")
             prompt_options.append("'s' to search")
             
-            choice = input(f"\n📌 Select file ({', '.join(prompt_options)}): ").strip().lower()
+            choice = input(f"\nSelect file ({', '.join(prompt_options)}): ").strip().lower()
             
             # Handle navigation
             if choice == 'n' and current_page < total_pages:
@@ -316,15 +237,15 @@ def select_file_hybrid(directory: str, prompt: str, extension: str = ".csv", req
                 continue
             elif choice == 's':
                 # Search interface
-                print(f"\n🔍 Enhanced Search")
+                print(f"\nEnhanced Search")
                 if is_baseline:
-                    print("💡 You can search by:")
+                    print("You can search by:")
                     print("   • Windows version: 'W10', 'Windows11'")
                     print("   • Build info: '22H2', 'Pro', '19045'")
                     print("   • Dates: '20221115', '2022'")
                     print("   • Full paths: 'W10_22H2_Pro_20221115_19045.2251\\W10_22H2_Pro_20221115_19045.2251'")
                 else:
-                    print("💡 Search by filename or partial name")
+                    print("Search by filename or partial name")
                 
                 if current_search:
                     print(f"Current search: '{current_search}' (press Enter to clear)")
@@ -349,21 +270,21 @@ def select_file_hybrid(directory: str, prompt: str, extension: str = ".csv", req
                     
                     if is_baseline:
                         selected_name = selected_file['full_name']  # Include folder path
-                        print(f"✅ Selected: {selected_name}.csv")
+                        print(f"Selected: {selected_name}.csv")
                     else:
                         selected_name = selected_file['name']
-                        print(f"✅ Selected: {selected_name}.csv")
+                        print(f"Selected: {selected_name}.csv")
                     
                     return selected_name
                 else:
-                    print(f"❌ Please enter a number between 1 and {max_choice}")
+                    print(f"Please enter a number between 1 and {max_choice}")
                     continue
             except ValueError:
-                print("❌ Please enter a valid number or navigation command")
+                print("Please enter a valid number or navigation command")
                 continue
                 
         except KeyboardInterrupt:
-            print("\n👋 Cancelled by user")
+            print("\nCancelled by user")
             sys.exit(0)
 
 
@@ -373,8 +294,8 @@ def get_output_filename() -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     suggested = f"autoruns_analysis_{timestamp}"
     
-    print(f"\n📊 Output filename (without .xlsx extension)")
-    print(f"💡 Suggestion: {suggested}")
+    print(f"\nOutput filename (without .xlsx extension)")
+    print(f"Suggestion: {suggested}")
     
     while True:
         try:
@@ -393,39 +314,39 @@ def get_output_filename() -> str:
                 filename += '.xlsx'
             
             output_path = Path("output") / filename
-            print(f"✅ Output: {output_path}")
+            print(f"Output: {output_path}")
             return filename
             
         except KeyboardInterrupt:
-            print("\n👋 Cancelled by user")
+            print("\nCancelled by user")
             sys.exit(0)
 
 
 def get_analysis_parameters() -> tuple:
     """Get analysis parameters with smart defaults."""
     print("\n" + "="*50)
-    print("🎛️  ANALYSIS PARAMETERS")
+    print("ANALYSIS PARAMETERS")
     print("="*50)
     
     # PySAD method
     method = "hst"  # Default
-    method_input = input("🔍 PySAD Method (hst/loda, default: hst): ").strip().lower()
+    method_input = input("PySAD Method (hst/loda, default: hst): ").strip().lower()
     if method_input == "loda":
         method = "loda"
     
     # Top percentage
     top_pct = 3.0  # Default
-    pct_input = input("📊 Top percentage (default: 3.0): ").strip()
+    pct_input = input("Top percentage (default: 3.0): ").strip()
     if pct_input:
         try:
             top_pct = float(pct_input)
             if not (0 < top_pct <= 100):
-                print("⚠️  Invalid percentage, using default 3.0%")
+                print("Invalid percentage, using default 3.0%")
                 top_pct = 3.0
         except ValueError:
-            print("⚠️  Invalid input, using default 3.0%")
+            print("Invalid input, using default 3.0%")
     
-    print(f"✅ Configuration: {method.upper()} method, top {top_pct}%")
+    print(f"Configuration: {method.upper()} method, top {top_pct}%")
     return top_pct, method
 
 
@@ -448,10 +369,10 @@ def run_analysis(csv_filename: str, baseline_filename: str, output_filename: str
     
     output_path = Path("output") / output_filename
     
-    print(f"\n🚀 Starting Analysis...")
-    print(f"📁 Input:    {csv_path}")
-    print(f"📋 Baseline: {baseline_path if baseline_path else 'None (pattern-based detection)'}")
-    print(f"📊 Output:   {output_path}")
+    print(f"\nStarting Analysis...")
+    print(f"Input:    {csv_path}")
+    print(f"Baseline: {baseline_path if baseline_path else 'None (pattern-based detection)'}")
+    print(f"Output:   {output_path}")
     print("-" * 50)
     
     # Build command
@@ -466,29 +387,29 @@ def run_analysis(csv_filename: str, baseline_filename: str, output_filename: str
     
     try:
         result = subprocess.run(cmd, check=True)
-        print(f"\n✅ Analysis completed successfully!")
-        print(f"📊 Report saved: {output_path}")
+        print(f"\nAnalysis completed successfully!")
+        print(f"Report saved: {output_path}")
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Analysis failed with error code {e.returncode}")
+        print(f"\nAnalysis failed with error code {e.returncode}")
         return False
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         return False
 
 
 def print_banner():
     """Print application banner."""
     print("="*60)
-    print("🔍 AUTORUNS ANALYZER - Hybrid File Selection")
+    print("AUTORUNS ANALYZER - Hybrid File Selection")
     print("="*60)
-    print("📁 Folder Structure:")
+    print("Folder Structure:")
     print("   csv/       - Autoruns CSV files")
     print("   baseline/  - Baseline CSV files")  
     print("   output/    - Analysis reports")
     print("")
-    print("🎯 Smart Selection:")
+    print("Smart Selection:")
     print("   • Small file lists: Direct menu")
     print("   • Large file lists: Search + filter")
     print("   • File metadata: Size, date modified")
@@ -501,15 +422,15 @@ def main():
         print_banner()
         
         # Setup
-        print("\n📁 Initializing...")
+        print("\nInitializing...")
         setup_directories()
         
         # File selection with hybrid approach
-        csv_filename = select_file_hybrid("csv", "🔍 Select Autoruns CSV file:", required=True)
+        csv_filename = select_file_hybrid("csv", "Select Autoruns CSV file:", required=True)
         if not csv_filename:
             return
         
-        baseline_filename = select_file_hybrid("baseline", "📋 Select baseline CSV file (optional):", required=False)
+        baseline_filename = select_file_hybrid("baseline", "Select baseline CSV file (optional):", required=False)
         
         output_filename = get_output_filename()
         
@@ -517,32 +438,32 @@ def main():
         
         # Final confirmation
         print(f"\n" + "="*50)
-        print("🚀 READY TO ANALYZE")
+        print("READY TO ANALYZE")
         print("="*50)
-        print(f"📁 CSV:          {csv_filename}.csv")
-        print(f"📋 Baseline:     {baseline_filename + '.csv' if baseline_filename else 'None'}")
-        print(f"📊 Output:       {output_filename}")
-        print(f"🎯 Method:       {method.upper()}")
-        print(f"📈 Percentage:   {top_pct}%")
+        print(f"CSV:          {csv_filename}.csv")
+        print(f"Baseline:     {baseline_filename + '.csv' if baseline_filename else 'None'}")
+        print(f"Output:       {output_filename}")
+        print(f"Method:       {method.upper()}")
+        print(f"Percentage:   {top_pct}%")
         
-        confirm = input(f"\n▶️  Start analysis? (Y/n): ").strip().lower()
+        confirm = input(f"\nStart analysis? (Y/n): ").strip().lower()
         if confirm and not confirm.startswith('y'):
-            print("👋 Analysis cancelled")
+            print("Analysis cancelled")
             return
         
         # Execute
         success = run_analysis(csv_filename, baseline_filename, output_filename, top_pct, method)
         
         if success:
-            print(f"\n🎉 Analysis Complete!")
-            print(f"📂 Report: output/{output_filename}")
+            print(f"\nAnalysis Complete!")
+            print(f"Report: output/{output_filename}")
         else:
-            print(f"\n💔 Analysis failed - check error messages above")
+            print(f"\nAnalysis failed - check error messages above")
             
     except KeyboardInterrupt:
-        print(f"\n👋 Goodbye!")
+        print(f"\nGoodbye!")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\nUnexpected error: {e}")
 
 
 if __name__ == "__main__":
