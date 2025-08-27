@@ -106,7 +106,7 @@ def detect_unsigned_binaries(df: pd.DataFrame) -> pd.DataFrame:
 
 def _is_signature_legitimate(signature: str) -> bool:
     """Verify signature integrity against manipulation."""
-    legitimate_signature = "✓ (Verified) Microsoft Windows"
+    legitimate_signature = "(Verified) Microsoft Windows"
     
     if signature != legitimate_signature:
         return False
@@ -124,10 +124,6 @@ def _is_signature_legitimate(signature: str) -> bool:
     for char in signature:
         category = unicodedata.category(char)
         if category in ['Cf', 'Cc', 'Co', 'Cs', 'Cn']:
-            return False
-        
-        # Ensure correct checkmark
-        if char == '✓' and ord(char) != 0x2713:
             return False
     
     # Check string length and whitespace
