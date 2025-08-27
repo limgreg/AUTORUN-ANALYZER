@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Clean Architecture Main - Each detector has a single, focused responsibility.
+Autoruns Analyzer - Clean Architecture Main Entry Point
 """
 
 import sys
@@ -41,7 +41,7 @@ def main(csv_path: str,
     """
     Clean Architecture Analysis - Single responsibility per detector.
     """
-    print(f"[+] Starting Clean Architecture Autoruns Analysis...")
+    print(f"[+] Starting Autoruns Analysis...")
     print(f"[+] Input: {csv_path}")
     
     # Load data
@@ -52,7 +52,7 @@ def main(csv_path: str,
         print(f"[!] Failed to load data: {e}")
         return
     
-    # Initialize clean architecture detection
+    # Run analysis
     try:
         from .detectors import run_autoruns_analysis
         results, registry, df_combined = run_autoruns_analysis(df, baseline_csv, pysad_method, top_pct)
@@ -61,124 +61,80 @@ def main(csv_path: str,
         print(f"\n[+] Creating combined analysis...")
         df_combined = registry.get_combined_findings(df, results)
         
-        # Optional: Meta-PySAD analysis
-        df_meta_top = None
+        # Optional: Meta-PySAD analysis (if available)
         try:
-            from .core.pysad import run_meta_pysad_analysis
-            print(f"[+] Running meta-statistical analysis...")
-            df_meta_top, df_meta_all = run_meta_pysad_analysis(df, results, pysad_method, top_pct)
-            results['meta_pysad'] = df_meta_top
-            print(f"[+] Meta-analysis: {len(df_meta_top)} findings")
+            from .core.pysad import build_features_for_pysad, pysad_scores
+            import math
+            import numpy as np
+            
+            print(f"[+] Running enhanced statistical analysis...")
+            
+            # Build enhanced features using detection results
+            base_features = build_features_for_pysad(df)
+            
+            # Add detection flags as features
+            for detector_name, result_df in results.items():
+                feature_name = f"flagged_by_{detector_name}"
+                base_features[feature_name] = 0
+                if isinstance(result_df, pd.DataFrame) and len(result_df) > 0:
+                    base_features.loc[result_df.index, feature_name] = 1
+            
+            # Add total detections feature
+            detection_columns = [col for col in base_features.columns if col.startswith('flagged_by_')]
+            if detection_columns:
+                base_features['total_detections'] = base_features[detection_columns].sum(axis=1)
+            
+            # Run PySAD on enhanced features
+            enhanced_scores = pysad_scores(base_features, method=pysad_method)
+            
+            # Create enhanced results
+            df_enhanced = df.copy()
+            df_enhanced['enhanced_pysad_score'] = np.round(enhanced_scores, 4)
+            
+            # Add detection summary
+            flagged_by = []
+            for idx in df.index:
+                detectors = []
+                for detector_name, result_df in results.items():
+                    if isinstance(result_df, pd.DataFrame) and idx in result_df.index:
+                        detectors.append(detector_name.replace('_', ' ').title())
+                flagged_by.append(' + '.join(detectors) if detectors else 'None')
+            
+            df_enhanced['flagged_by_detectors'] = flagged_by
+            
+            # Get top results
+            k = max(1, int(math.ceil(len(df_enhanced) * (top_pct / 100.0))))
+            df_enhanced_top = df_enhanced.nlargest(k, 'enhanced_pysad_score')
+            
+            results['enhanced_pysad'] = df_enhanced_top
+            print(f"[+] Enhanced analysis: {len(df_enhanced_top)} findings")
+            
         except Exception as e:
-            print(f"[!] Meta-analysis skipped: {e}")
+            print(f"[+] Enhanced analysis skipped: {e}")
         
         # Generate report
-        print(f"\n[+] Generating clean architecture report...")
+        print(f"\n[+] Generating report...")
         from .reports.excel import write_modular_report
         write_modular_report(out_xlsx, df, results, registry, df_combined, 
                            top_pct, pysad_method, baseline_csv)
         
-        # Print simple completion message
         print(f"[+] Analysis complete. Report saved: {out_xlsx}")
         
-    except ImportError as e:
-        print(f"[!] Clean architecture import failed: {e}")
-        run_fallback_analysis(df, out_xlsx, top_pct, pysad_method)
     except Exception as e:
-        print(f"[!] Clean architecture analysis failed: {e}")
+        print(f"[!] Analysis failed: {e}")
         import traceback
         traceback.print_exc()
-        run_fallback_analysis(df, out_xlsx, top_pct, pysad_method)
-
-
-def run_fallback_analysis(df, out_xlsx, top_pct, pysad_method):
-    """Simple fallback if clean architecture fails."""
-    print(f"\n[+] Running simple fallback analysis...")
-    
-    results = {}
-    
-    # Basic unsigned detection
-    try:
-        if "Signer" in df.columns:
-            signer_s = df["Signer"].astype("string")
-            unsigned_mask = (
-                signer_s.isna() | (signer_s == "") | (signer_s.str.strip() == "") |
-                signer_s.str.contains(r"^\(not verified\)", case=False, regex=True, na=False)
-            )
-            df_unsigned = df.loc[unsigned_mask].copy()
-            if len(df_unsigned) > 0:
-                df_unsigned.insert(len(df_unsigned.columns), "detection_reason", "No valid digital signature")
-                df_unsigned.insert(len(df_unsigned.columns), "detection_type", "Unsigned Binary")
-            results['unsigned_binaries'] = df_unsigned
-            print(f"[+] Unsigned binaries: {len(df_unsigned)}")
-    except Exception as e:
-        print(f"[!] Unsigned detection failed: {e}")
-        results['unsigned_binaries'] = pd.DataFrame()
-    
-    # Basic anomaly detection
-    try:
-        from .core.pysad import build_features_for_pysad, pysad_scores
-        import math
-        
-        features = build_features_for_pysad(df)
-        scores = pysad_scores(features, method=pysad_method)
-        
-        k = max(1, int(math.ceil(len(df) * (top_pct / 100.0))))
-        df_pysad = df.copy()
-        df_pysad['pysad_score'] = scores
-        df_pysad_top = df_pysad.nlargest(k, 'pysad_score')
-        
-        if len(df_pysad_top) > 0:
-            df_pysad_top.insert(len(df_pysad_top.columns), "detection_reason", 
-                               [f"Statistical anomaly (score: {score:.3f})" for score in df_pysad_top['pysad_score']])
-            df_pysad_top.insert(len(df_pysad_top.columns), "detection_type", "Statistical Anomaly")
-        
-        results['anomaly_detection'] = df_pysad_top
-        print(f"[+] Statistical anomalies: {len(df_pysad_top)}")
-        
-    except Exception as e:
-        print(f"[!] Anomaly detection failed: {e}")
-        results['anomaly_detection'] = pd.DataFrame()
-    
-    # Generate simple report
-    try:
-        from .reports.excel import ensure_xlsx
-        out_xlsx = ensure_xlsx(out_xlsx)
-        
-        with pd.ExcelWriter(out_xlsx, engine="xlsxwriter") as writer:
-            # Summary
-            summary_data = []
-            for name, result_df in results.items():
-                count = len(result_df) if isinstance(result_df, pd.DataFrame) else 0
-                summary_data.append([name.replace('_', ' ').title(), count])
-            
-            summary_df = pd.DataFrame(summary_data, columns=["Detection Type", "Findings"])
-            summary_df.to_excel(writer, sheet_name="Summary", index=False)
-            
-            # Data sheets
-            df.to_excel(writer, sheet_name="All_Rows", index=False)
-            
-            for name, result_df in results.items():
-                if isinstance(result_df, pd.DataFrame) and len(result_df) > 0:
-                    sheet_name = name.replace('_', ' ').title()[:31]
-                    result_df.to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        print(f"[+] Fallback report saved: {out_xlsx}")
-        
-    except Exception as e:
-        print(f"[!] Report generation failed: {e}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python -m autorun_analyzer_dis <autoruns.csv> [out.xlsx] [top_pct] [baseline.csv] [pysad_method]")
-        print("\nClean Architecture Autoruns Analyzer:")
+        print("\nAutoruns Analyzer - Clean Architecture:")
         print("  Character Analysis: Visual masquerading, hidden characters")
         print("  Signature Analysis: Digital signature verification")
         print("  Location Analysis: Suspicious path intelligence") 
         print("  Integrity Analysis: File hash verification")
-        print("  Meta-Statistical Analysis: PySAD anomaly detection")
-        print("\nEach module has a single, focused responsibility!")
+        print("  Statistical Analysis: PySAD anomaly detection")
         sys.exit(1)
     
     csv_path = sys.argv[1]

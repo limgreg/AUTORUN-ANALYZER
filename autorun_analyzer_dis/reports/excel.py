@@ -1,6 +1,5 @@
 """
 Excel report generation for modular detection system.
-Updated to remove High Priority Combined tab.
 """
 
 import os
@@ -70,17 +69,16 @@ def write_modular_report(out_path: str,
                         baseline_csv: str = None):
     """
     Generate comprehensive Excel report for modular detection system.
-    REMOVED: High Priority Combined tab
     
     Args:
         out_path: Output Excel file path
         df_src: Source DataFrame
         results: Dictionary of detection results
         registry: DetectionRegistry instance
-        df_combined: Combined high-priority findings (included in summary only)
+        df_combined: Combined high-priority findings
         top_pct: PySAD percentage threshold
         pysad_method: PySAD method used
-        baseline_csv: Baseline CSV path (for summary)
+        baseline_csv: Baseline CSV path
     """
     out_path = ensure_xlsx(out_path)
     
@@ -96,7 +94,7 @@ def write_modular_report(out_path: str,
     with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
         wb = writer.book
         
-        # 1. EXECUTIVE SUMMARY SHEET (includes combined findings info)
+        # 1. EXECUTIVE SUMMARY SHEET
         create_executive_summary(writer, wb, df_src, detection_counts, df_combined, 
                                top_pct, pysad_method, baseline_csv)
         
@@ -108,12 +106,12 @@ def write_modular_report(out_path: str,
         # 3. OVERLAP ANALYSIS
         create_overlap_analysis(writer, wb, df_src, results)
         
-        # 4. META PYSAD (if available)
-        if 'meta_pysad' in results and isinstance(results['meta_pysad'], pd.DataFrame) and len(results['meta_pysad']) > 0:
-            results['meta_pysad'].to_excel(writer, sheet_name="Meta_PySAD", index=False)
-            autosize_worksheet(writer.sheets["Meta_PySAD"], results['meta_pysad'], wb)
+        # 4. ENHANCED PYSAD (if available)
+        if 'enhanced_pysad' in results and isinstance(results['enhanced_pysad'], pd.DataFrame) and len(results['enhanced_pysad']) > 0:
+            results['enhanced_pysad'].to_excel(writer, sheet_name="Enhanced_PySAD", index=False)
+            autosize_worksheet(writer.sheets["Enhanced_PySAD"], results['enhanced_pysad'], wb)
         
-        # 5. INDIVIDUAL DETECTION SHEETS (in specific order)
+        # 5. INDIVIDUAL DETECTION SHEETS
         detector_order = [
             'unsigned_binaries',
             'suspicious_paths', 
@@ -127,7 +125,6 @@ def write_modular_report(out_path: str,
             if detector_name in results:
                 df_results = results[detector_name]
                 if isinstance(df_results, pd.DataFrame) and len(df_results) > 0:
-                    # Clean sheet name mapping
                     sheet_name_map = {
                         'unsigned_binaries': 'Unsigned_Binaries',
                         'suspicious_paths': 'Suspicious_Paths',
@@ -147,19 +144,14 @@ def write_modular_report(out_path: str,
         df_src.to_excel(writer, sheet_name="All_Rows", index=False)
         autosize_worksheet(writer.sheets["All_Rows"], df_src, wb)
 
-    print(f"[+] Modular Excel report written to: {out_path}")
+    print(f"[+] Excel report written to: {out_path}")
 
 
 def create_executive_summary(writer, wb, df_src, detection_counts, df_combined, 
                            top_pct, pysad_method, baseline_csv):
-    """Create executive summary sheet with key metrics (includes combined findings stats)."""
+    """Create executive summary sheet with key metrics."""
     
-    # Calculate key metrics
     total_rows = len(df_src)
-    total_flagged = len(set().union(*[
-        set(range(len(df))) for df in writer.sheets.keys() 
-        if hasattr(writer.sheets[df], 'index')
-    ]))
     
     # Create summary data
     summary_data = []
@@ -171,10 +163,9 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
     summary_data.append(["Scan timestamp", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     summary_data.append(["", ""])
     
-    # Detection results (in specific order)
+    # Detection results
     summary_data.append(["DETECTION RESULTS", ""])
     
-    # Ordered detection results
     detector_order = [
         'unsigned_binaries',
         'suspicious_paths',
@@ -200,34 +191,33 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
             percentage = (count / total_rows * 100) if total_rows > 0 else 0
             summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
     
-    # Add any other detectors not in the main order (like meta_pysad)
+    # Add other detectors
     for detector_name, count in detection_counts.items():
         if detector_name not in detector_order:
             display_name = detector_name.replace('_', ' ').title()
             percentage = (count / total_rows * 100) if total_rows > 0 else 0
             summary_data.append([display_name, f"{count:,}/{total_rows:,} ({percentage:.1f}%)"])
     
-    # Add combined findings info in summary (without separate tab)
+    # Combined findings info
     summary_data.append(["", ""])
     summary_data.append(["MULTI-DETECTION ANALYSIS", ""])
     summary_data.append(["Items flagged by multiple detectors", f"{len(df_combined):,}"])
     
     if len(df_combined) > 0:
-        # Show top 3 multi-detection items in summary
         summary_data.append(["", ""])
         summary_data.append(["TOP MULTI-DETECTION FINDINGS", ""])
         
         for i, (idx, row) in enumerate(df_combined.head(3).iterrows()):
-            analysis_types = row.get('analysis_types', 'Unknown')
+            detection_modules = row.get('detection_modules', 'Unknown')
             severity = row.get('max_severity', 'Unknown')
             path = row.get('Image Path', row.get('Path', 'Unknown'))
             priority = row.get('priority_score', 0)
             
-            # Truncate path if too long for summary
+            # Truncate path if too long
             if len(path) > 50:
                 path = path[:47] + "..."
             
-            summary_data.append([f"#{i+1} [{severity}] {analysis_types}", f"Score: {priority}"])
+            summary_data.append([f"#{i+1} [{severity}] {detection_modules}", f"Score: {priority}"])
             summary_data.append([f"   Path", path])
     
     # Configuration
@@ -243,7 +233,6 @@ def create_executive_summary(writer, wb, df_src, detection_counts, df_combined,
     summary_data.append(["", ""])
     summary_data.append(["RISK ASSESSMENT", ""])
     
-    # Calculate risk levels based on detection types
     high_risk = detection_counts.get('visual_masquerading', 0) + len(df_combined)
     medium_risk = detection_counts.get('unsigned_binaries', 0) + detection_counts.get('suspicious_paths', 0)
     low_risk = detection_counts.get('hidden_characters', 0) + detection_counts.get('anomaly_detection', 0)
@@ -331,71 +320,3 @@ def create_overlap_analysis(writer, wb, df_src, results):
         overlap_df = pd.DataFrame(overlap_data)
         overlap_df.to_excel(writer, sheet_name="Overlap_Analysis", index=False)
         autosize_worksheet(writer.sheets["Overlap_Analysis"], overlap_df, wb)
-
-
-# Legacy function for backwards compatibility
-def write_report(out_path: str, df_src: pd.DataFrame, df_all: pd.DataFrame,
-                df_rules: pd.DataFrame, df_pysad_all: pd.DataFrame | None,
-                df_pysad_top: pd.DataFrame | None, df_baseline: pd.DataFrame | None,
-                df_unsigned: pd.DataFrame | None, top_pct: float, pysad_method: str):
-    """
-    Legacy report function - converts old format to modular format.
-    This maintains backwards compatibility with existing code.
-    """
-    print("[!] Using legacy report format - consider upgrading to modular system")
-    
-    # Convert old format to modular format
-    results = {}
-    if len(df_rules) > 0:
-        results['visual_masquerading'] = df_rules
-    if df_unsigned is not None and len(df_unsigned) > 0:
-        results['unsigned_binaries'] = df_unsigned
-    if df_baseline is not None and len(df_baseline) > 0:
-        results['baseline_comparison'] = df_baseline
-    if df_pysad_top is not None and len(df_pysad_top) > 0:
-        results['anomaly_detection'] = df_pysad_top
-    
-    # Create a minimal registry for the summary (with ordered results)
-    class LegacyRegistry:
-        def get_summary(self):
-            summary = []
-            
-            # Ordered detection results
-            detector_order = [
-                'unsigned_binaries',
-                'suspicious_paths', 
-                'baseline_comparison',
-                'visual_masquerading',
-                'hidden_characters',
-                'anomaly_detection'
-            ]
-            
-            display_names = {
-                'unsigned_binaries': 'Unsigned Binaries',
-                'suspicious_paths': 'Suspicious Paths',
-                'baseline_comparison': 'Baseline Comparison',
-                'visual_masquerading': 'Visual Masquerading',
-                'hidden_characters': 'Hidden Characters', 
-                'anomaly_detection': 'Anomaly Detection'
-            }
-            
-            for detector_name in detector_order:
-                if detector_name in results:
-                    df_result = results[detector_name]
-                    summary.append({
-                        'Detector': display_names.get(detector_name, detector_name.replace('_', ' ').title()),
-                        'Description': 'Legacy detection method',
-                        'Findings': len(df_result),
-                        'Enabled': True
-                    })
-            
-            return pd.DataFrame(summary)
-    
-    registry = LegacyRegistry()
-    
-    # No combined analysis in legacy mode
-    df_combined = pd.DataFrame()
-    
-    # Generate report
-    write_modular_report(out_path, df_src, results, registry, df_combined, 
-                        top_pct, pysad_method, None)
