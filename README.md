@@ -253,3 +253,7 @@ The simplified architecture makes contributions straightforward:
 - Standard DataFrame input/output patterns
 - Independent testing per detector module  
 - No complex integration requirements
+
+## Responsible Use
+This tool is intended for legitimate security analysis only. 
+Users are responsible for compliance with applicable laws and policies.
