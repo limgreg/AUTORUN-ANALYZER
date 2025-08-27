@@ -24,7 +24,7 @@ def detect_unsigned_binaries(df: pd.DataFrame) -> pd.DataFrame:
     s = signer_s.astype("string")
 
     # Only accept exact verified Microsoft Windows signature
-    legitimate_signature = "✓ (Verified) Microsoft Windows"
+    legitimate_signature = "(Verified) Microsoft Windows"
     
     # Check for exact match and integrity
     verified_mask = (s == legitimate_signature) & s.notna()
