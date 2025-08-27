@@ -1,295 +1,290 @@
-# SIT-DIS-VA
-auturun csv scanner 
-# Autoruns Analyzer - Advanced Windows Persistence Detection
+# Core Detectors and Reports Documentation
 
-A comprehensive toolkit for analyzing Windows Sysinternals Autoruns data with multiple detection techniques including visual masquerading, anomaly detection, and baseline comparison.
+This document provides detailed technical information about the simplified detection modules and reporting system used in the Autoruns Analyzer.
 
-##  Architecture Overview
+## Simplified Detection System Architecture
 
-The package follows a **modular detection architecture** where each detection technique is implemented as an independent module, managed by a central registry system.
+The detection system uses a clean, direct approach where each detector module focuses on a single responsibility. The complex DetectionRegistry has been replaced with simple function orchestration in `detectors/__init__.py`.
 
-```
-autorun_analyzer_dis/
-├── core/                    # Core analysis components
-├── detectors/              # Modular detection system
-├── reports/                # Report generation
-└── main.py                # Main orchestration
+### Core Detection Philosophy
 
-```
+1. **Single Responsibility**: Each detector focuses on one specific threat vector
+2. **No Functional Overlap**: Path analysis, signature verification, and character analysis are completely separate
+3. **Direct Function Calls**: Simple orchestration replaces complex registry management
+4. **Baseline Enhancement**: Detectors automatically improve when baseline data is available
+5. **Clear Output**: Each detector returns a standard DataFrame with detection details
 
-##  File Structure & Purpose
+## Detection System Implementation
 
-###  Package Root
+### Main Orchestration (`detectors/__init__.py`)
 
-| File | Purpose | Key Features |
-| --- | --- | --- |
-| `__init__.py` | Package initialization | Exports main functions, version info |
-| `main.py` | **Main orchestration** | CLI interface, coordinates all detections, fallback handling |
-
-###  Core Analysis (`core/`)
-
-| File | Purpose | Techniques Used |
-| --- | --- | --- |
-| `utils.py` | **Shared utilities** | File encoding detection, path normalization, Shannon entropy calculation |
-| `baseline.py` | **Baseline comparison** | Hash-based file integrity checking, path normalization |
-| `pysad.py` | **Statistical analysis** | PySAD integration, feature engineering, meta-detection |
-
-###  Detection Modules (`detectors/`)
-
-| File | Detection Type | Techniques & Algorithms |
-| --- | --- | --- |
-| `__init__.py` | **Detection Registry** | Central detector management, overlap analysis, priority scoring |
-| `visual_masquerading.py` | **Visual Masquerading** | Unicode confusable character detection, legitimate filename spoofing |
-| `unsigned_binaries.py` | **Digital Signatures** | Certificate validation, unsigned binary identification |
-| `suspicious_paths.py` | **Path Analysis** | Suspicious location detection, system directory masquerading |
-| `hidden_characters.py` | **Hidden Characters** | NBSP, zero-width chars, control characters, RTL override detection |
-| `baseline_comparison.py` | **Baseline Deviations** | Known-good baseline comparison, hash verification |
-| `anomaly_detection.py` | **Statistical Anomalies** | PySAD-based outlier detection, feature engineering |
-
-###  Reports (`reports/`)
-
-| File | Purpose | Features |
-| --- | --- | --- |
-| `excel.py` | **Excel Report Generation** | Multi-sheet reports, auto-formatting, overlap analysis, executive summary |
-
-##  Detection Techniques Explained
-
-### 1. Visual Masquerading Detection
-
-**File:** `detectors/visual_masquerading.py`
-
-**Technique:** Detects malware using Unicode confusable characters that appear identical to legitimate filenames.
-
-**How it works:**
-
-- Maps confusable characters (e.g., Cyrillic 'а' vs Latin 'a')
-- Normalizes filenames by replacing confusables
-- Compares against known legitimate executables
-- Flags executables with actual character substitutions
-
-**Example Detection:**
-
-```
-svchost.exe → svсhost.exe (using Cyrillic 'с' instead of Latin 'c')
-
-```
-
-### 2. Unsigned Binary Detection
-
-**File:** `detectors/unsigned_binaries.py`
-
-**Technique:** Identifies files without valid digital signatures.
-
-**Detection Logic:**
-
-- Missing/empty Signer fields
-- "(Not verified)" prefixes
-- Known unsigned indicators (N/A, Unknown, etc.)
-- Case-insensitive pattern matching
-
-### 3. Hidden Character Detection
-
-**File:** `detectors/hidden_characters.py`
-
-**Technique:** Finds non-printable and hidden Unicode characters often used in evasion.
-
-**Character Types Detected:**
-
-- **NBSP (U+00A0):** Non-breaking spaces
-- **Zero-width chars:** ZWSP, ZWNJ, ZWJ, BOM
-- **Control chars:** 0x00-0x1F, 0x7F-0x9F ranges
-- **RTL override:** Right-to-left text manipulation
-- **Unicode spaces:** En/Em spaces, hair spaces
-- **Combining marks:** Diacritical marks
-
-### 4. Baseline-Driven Suspicious Path Analysis
-
-**File:** `detectors/suspicious_paths.py`
-
-**Technique:** Intelligent path analysis using baseline comparison as primary method.
-
-**Detection Strategy:**
-
-- **Primary:** Baseline comparison (unknown paths in critical locations)
-- **Hash Verification:** File replacement detection via hash mismatches
-- **Critical Fallback:** Minimal rules when no baseline available
-- **Suspicion Levels:** Critical/High/Medium/Low priority classification
-
-**Focus Areas:**
-
-- Unknown files in System32/SysWOW64 (Critical)
-- Unknown executables in Program Files (High)
-- File integrity violations (Critical)
-- Minimal false positives through environment-aware detection
-
-### 5. Statistical Anomaly Detection
-
-**File:** `detectors/anomaly_detection.py`
-
-**Technique:** Uses PySAD (Python Streaming Anomaly Detection) for outlier identification.
-
-**Feature Engineering:**
-
-- String length analysis
-- Argument counting
-- Path depth (slash/backslash count)
-- File extension analysis (dot count)
-- Shannon entropy (randomness measure)
-- Digital signature status
-
-**Algorithms Available:**
-
-- **HalfSpaceTrees (HST):** Fast, memory-efficient
-- **LODA:** Lightweight Online Detector of Anomalies
-
-### 6. Baseline Comparison
-
-**File:** `detectors/baseline_comparison.py`
-
-**Technique:** Compares against known-good baseline data.
-
-**Verification Methods:**
-
-- Path existence checking
-- Hash verification (SHA256 > SHA1 > MD5 priority)
-- System directory validation
-- Encoding-robust CSV parsing
-
-### 7. Meta-Detection System
-
-**File:** `core/pysad.py` - `run_meta_pysad_analysis()`
-
-**Technique:** Advanced meta-analysis using detection results as features.
-
-**Meta-Features:**
-
-- Binary flags for each detector (0/1)
-- Total detection count per entry
-- High/medium priority detection counts
-- Combined risk scoring
-
-**Risk Calculation:**
+The system uses `run_all_detections()` which directly calls each detector:
 
 ```python
-combined_risk_score = meta_pysad_score * (1 + detection_count * 0.2)
-
+results['visual_masquerading'] = detect_visual_masquerading(df)
+results['unsigned_binaries'] = detect_unsigned_binaries(df)
+results['suspicious_paths'] = detect_suspicious_paths(df, baseline_csv)
+# etc.
 ```
 
-##  Detection Registry System
+Key functions:
+- `run_all_detections()`: Main orchestration with progress logging
+- `get_combined_findings()`: Simple overlap analysis
+- `create_detection_summary()`: Basic summary generation
+- `SimpleRegistry`: Compatibility class for report generation
 
-**File:** `detectors/__init__.py`
+## Individual Detector Modules
 
-The registry provides centralized management of all detection modules:
+### 1. Visual Masquerading Detector
+**File**: `visual_masquerading.py`
+**Responsibility**: Character Analysis
 
-### Key Features:
+Detects Unicode characters that visually mimic legitimate filenames to deceive users and security tools.
 
-- **Dynamic Registration:** Easy addition of new detectors
-- **Enable/Disable:** Runtime control of detectors
-- **Overlap Analysis:** Find items detected by multiple methods
-- **Priority Scoring:** Weighted importance of different detection types
-- **Combined Findings:** High-priority items flagged by multiple detectors
+**Detection Methods**:
+- Homoglyph character detection (e.g., Cyrillic 'а' vs Latin 'a')
+- Mixed script analysis (legitimate files rarely mix character sets)
+- Suspicious Unicode ranges (mathematical symbols, box drawing)
+- Right-to-left override character abuse
 
-### Priority Weights:
+**Output Columns**:
+- `detection_reason`: Specific Unicode issue identified
+- `suspicious_chars`: Character codes and descriptions
+- `severity_level`: Risk assessment (Low/Medium/High/Critical)
 
-- Visual Masquerading: **10** (highest)
-- Unsigned Binaries: **8**
-- Baseline-Driven Suspicious Paths: **6** (with suspicion level multipliers)
-- Hidden Characters: **5**
-- Baseline Deviations: **3**
-- Anomaly Detection: **2**
+### 2. Unsigned Binaries Detector
+**File**: `unsigned_binaries.py`
+**Responsibility**: Signature Analysis
 
-### Suspicion Level Multipliers:
+Identifies executables and libraries without valid digital signatures or with suspicious signing characteristics.
 
-- **Critical** (System files, hash mismatches): **2.0x**
-- **High** (Unknown executables in Program Files): **1.5x**
-- **Medium-High** (Unknown autorun entries): **1.3x**
-- **Medium** (Other unknown executables): **1.0x**
-- **Low** (Watched locations): **0.8x**
+**Detection Methods**:
+- Missing digital signatures
+- Self-signed certificates
+- Expired or revoked certificates
+- Weak signature algorithms
+- Unusual certificate authorities
 
-##  Core Utilities
+**Output Columns**:
+- `detection_reason`: Signature issue description
+- `signature_status`: Detailed signature analysis
+- `signer_info`: Certificate authority and validity
 
-### File Compatibility (`core/utils.py`)
+### 3. Suspicious Paths Detector
+**File**: `suspicious_paths.py`
+**Responsibility**: Location Analysis
 
-**Techniques:**
+Analyzes file paths for indicators of malicious placement or unusual system locations.
 
-- **Encoding Detection:** BOM detection, UTF-16/UTF-8 heuristics
-- **Delimiter Detection:** Automatic tab/comma detection
-- **Path Normalization:** Case-insensitive, environment variable handling
-- **Shannon Entropy:** Information theory for randomness measurement
+**Detection Methods**:
+- Pattern-based suspicious location detection
+- Temporary directory abuse detection
+- User profile exploitation analysis
+- System directory tampering
+- Baseline deviation analysis (when baseline available)
 
-### PySAD Integration (`core/pysad.py`)
+**Baseline Enhancement**: When baseline data is provided, this detector compares current paths against known-good configurations, significantly improving detection accuracy.
 
-**Advanced Features:**
+**Output Columns**:
+- `detection_reason`: Path-specific concern
+- `path_category`: Classification of path type
+- `baseline_status`: Present/Absent/Modified (when baseline used)
 
-- **Feature Engineering:** Multi-dimensional numeric feature extraction
-- **Model Selection:** HalfSpaceTrees vs LODA algorithms
-- **Score Normalization:** 0-1 range normalization
-- **Robust Processing:** Fallback handling for individual samples
+### 4. Hidden Characters Detector
+**File**: `hidden_characters.py`
+**Responsibility**: Character Encoding Analysis
 
-##  Report Generation
+Detects non-printable characters and encoding anomalies that may indicate evasion techniques.
 
-**File:** `reports/excel.py`
+**Detection Methods**:
+- Non-printable ASCII character detection
+- Unicode control character analysis
+- Encoding consistency verification
+- Null byte injection detection
+- Invisible character identification
 
-### Report Structure:
+**Output Columns**:
+- `detection_reason`: Encoding issue description
+- `character_details`: Specific problematic characters
+- `position_info`: Location of hidden characters
 
-1. **Executive Summary:** Key metrics, risk assessment
-2. **Detection Summary:** All detector results overview
-3. **High-Priority Combined:** Items flagged by multiple detectors
-4. **Individual Detection Sheets:** Detailed findings per detector
-5. **Overlap Analysis:** Detector intersection analysis
-6. **All Rows:** Complete dataset reference
+### 5. Baseline Comparison Detector
+**File**: `baseline_comparison.py`
+**Responsibility**: Integrity Analysis
 
-### Formatting Features:
+Compares file hashes and metadata against known-good baseline systems to detect tampering or unauthorized changes.
 
-- Auto-sized columns with intelligent width calculation
-- Conditional formatting for different data types
-- Freeze panes and autofilters
-- Text wrapping for long content
-- Color-coded risk levels
+**Requirements**: This detector only runs when baseline CSV data is provided.
 
-##  Usage Examples
+**Detection Methods**:
+- File hash comparison
+- Size verification
+- Timestamp analysis
+- New file detection
+- Modified file identification
 
-### Basic Analysis (Fallback Mode):
+**Output Columns**:
+- `detection_reason`: Type of integrity violation
+- `baseline_hash`: Expected file hash
+- `current_hash`: Observed file hash
+- `change_type`: Added/Modified/Suspicious
 
-```bash
-python -m autorun_analyzer_dis autoruns.csv
+### 6. Anomaly Detection Detector
+**File**: `anomaly_detection.py`
+**Responsibility**: Meta-Statistical Analysis
 
-```
+Uses machine learning algorithms to identify statistical outliers across multiple dimensions of file characteristics.
 
-*Note: Without baseline, suspicious path detection uses minimal fallback rules*
+**Algorithms Supported**:
+- **HST (Half-Space Trees)**: Default method, fast and effective for high-dimensional data
+- **LODA (Lightweight On-line Detector of Anomalies)**: Alternative method with different detection characteristics
 
-### **Recommended: Baseline-Enhanced Analysis:**
+**Feature Engineering**:
+- Path length and complexity metrics
+- File size distributions
+- String entropy calculations
+- Character frequency analysis
+- Directory depth measurements
 
-```bash
-python -m autorun_analyzer_dis autoruns.csv report.xlsx 5.0 clean_baseline.csv loda
+**Output Columns**:
+- `anomaly_score`: Statistical anomaly ranking
+- `feature_contributions`: Which characteristics drove the detection
+- `percentile_rank`: Relative ranking among all files
 
-```
+## Report Generation System
 
-*Much higher accuracy with environment-aware detection*
+### Excel Report Structure
+**File**: `reports/excel.py`
 
-### Creating a Clean Baseline:
+The reporting system generates comprehensive Excel workbooks with multiple worksheets:
 
-```bash
-# On a clean, known-good system:
-Autoruns.exe -c -h -s > clean_baseline.csv
+#### Summary Sheet
+- Detection methodology overview
+- Total findings by detector type
+- Analysis parameters and configuration
+- Execution metadata (runtime, file counts, etc.)
 
-```
+#### Combined Findings Sheet
+- High-priority items flagged by multiple detectors
+- Priority scoring based on detection count and severity
+- Consolidated threat assessment
+- Recommended investigation order
 
-### Programmatic Usage:
+#### Individual Detector Sheets
+- Separate worksheet for each detector's findings
+- Complete detection details and reasoning
+- Source data context for each finding
+- Sortable and filterable columns
 
-```python
-from autorun_analyzer_dis import main, autoruns_to_dataframe
-from autorun_analyzer_dis.detectors import run_all_detections
+#### Raw Data Sheet
+- Original autoruns data with enhanced metadata
+- Detector flags and annotations
+- Preserved for detailed forensic analysis
 
-# Load data
-df = autoruns_to_dataframe("autoruns.csv")
+### Report Features
 
-# Baseline-enhanced detection (recommended)
-results, registry = run_all_detections(df, baseline_csv="clean_baseline.csv")
+**Professional Formatting**:
+- Freeze panes for easy navigation
+- Conditional formatting for severity levels
+- Automatic column width optimization
+- Header formatting and protection
 
-# Get high-priority combined findings
-combined = registry.get_combined_findings(df, results)
+**Data Integrity**:
+- All source data preserved
+- Detection methodology documented
+- Timestamps and analysis parameters recorded
+- Reproducible analysis trail
 
-# test
+**Export Compatibility**:
+- Standard Excel format (.xlsx)
+- Compatible with enterprise security tools
+- Importable to SIEM systems
+- CSV export capability maintained
 
-```
+## Technical Implementation Details
+
+### Feature Engineering for Statistical Analysis
+The system extracts multiple quantitative features from each autorun entry:
+
+1. **Path Characteristics**:
+   - Total path length
+   - Directory depth
+   - Character distribution
+   - Special character frequency
+
+2. **String Analysis**:
+   - Entropy measurements
+   - Language detection
+   - Character set consistency
+   - Unusual character patterns
+
+3. **Size Metrics**:
+   - File size distributions
+   - Size-to-path ratios
+   - Outlier identification
+
+4. **Temporal Features**:
+   - Timestamp analysis
+   - Age calculations
+   - Modification patterns
+
+### Performance Characteristics
+
+**Memory Efficiency**:
+- Streaming processing for large datasets
+- Minimal memory footprint per detector
+- Garbage collection optimization
+
+**Processing Speed**:
+- Parallel processing where applicable
+- Optimized pandas operations
+- Efficient regex compilation
+
+**Scalability**:
+- Linear time complexity for most detectors
+- Handles datasets from hundreds to hundreds of thousands of entries
+- Memory usage scales appropriately with data size
+
+## Configuration and Customization
+
+### Detection Sensitivity
+Most detectors support adjustable sensitivity levels through configuration parameters:
+- Threshold adjustment for anomaly scores
+- Pattern matching strictness
+- Baseline comparison tolerances
+
+### Adding New Detectors
+The clean architecture enables easy extension:
+
+1. Create new detector file following the established pattern
+2. Implement single responsibility detection logic
+3. Return standardized DataFrame with required columns
+4. Register in `detection_system.py`
+5. Add to report generation pipeline
+
+### Baseline Integration
+Detectors that benefit from baseline data should:
+- Function independently without baseline
+- Enhance accuracy when baseline is available
+- Document baseline requirements clearly
+- Handle missing baseline gracefully
+
+## Quality Assurance
+
+### Testing Strategy
+- Unit tests for each detector module
+- Integration tests for combined analysis
+- Performance benchmarking
+- False positive rate measurement
+
+### Error Handling
+- Graceful degradation when detectors fail
+- Comprehensive error logging
+- Partial result preservation
+- User-friendly error messages
+
+### Validation
+- Known malware sample testing
+- Clean system baseline validation
+- Cross-platform compatibility verification
+- Large dataset stress testing
